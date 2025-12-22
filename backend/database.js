@@ -161,6 +161,5 @@ module.exports = {
                     else resolve(rows);
                 });
             }).catch(reject);
-        });
-    }
+        }); }
 };
