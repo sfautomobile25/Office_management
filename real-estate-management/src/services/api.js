@@ -86,6 +86,51 @@ export const adminAPI = {
     
 };
 
+// Add accounts API methods
+export const accountsAPI = {
+    // Accounts
+    getAccounts: () => API.get('/accounts/accounts'),
+    createAccount: (accountData) => API.post('/accounts/accounts', accountData),
+    
+    // Transactions
+    getTransactions: (params) => API.get('/accounts/transactions', { params }),
+    createTransaction: (transactionData) => API.post('/accounts/transactions', transactionData),
+    
+    // Journal Entries
+    createJournalEntry: (entryData) => API.post('/accounts/journal-entries', entryData),
+    
+    // Invoices
+    getInvoices: () => API.get('/accounts/invoices'),
+    
+    // Reports
+    getReports: (params) => API.get('/accounts/reports', { params }),
+    
+    // Permissions
+    getPermissions: () => API.get('/accounts/permissions'),
+    getMyPermissions: () => API.get('/accounts/my-permissions'),
+    grantPermission: (permissionData) => API.post('/accounts/permissions', permissionData)
+};
+
+export const cashManagementAPI = {
+    // Daily Cash Balance
+    getDailyCash: (params) => API.get('/cash/daily-cash', { params }),
+    updateDailyBalance: (data) => API.post('/cash/daily-cash', data),
+    
+    // Cash Transactions
+    getCashTransactions: (params) => API.get('/cash/cash-transactions', { params }),
+    createCashTransaction: (data) => API.post('/cash/cash-transactions', data),
+    
+    // Daily Summary
+    getDailySummary: (params) => API.get('/cash/daily-summary', { params }),
+    generateDailySummary: (data) => API.post('/cash/generate-daily-summary', data),
+    
+    // Cash Position
+    getCashPosition: () => API.get('/cash/cash-position'),
+    
+    // Expense Analysis
+    getExpenseAnalysis: (params) => API.get('/cash/expense-analysis', { params })
+};
+
 // System API
 export const systemAPI = {
     healthCheck: () => API.get('/health'),

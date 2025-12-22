@@ -16,7 +16,7 @@ function UserManagement() {
         permissions: []
     });
 
-    const availableRoles = ['admin', 'manager', 'user', 'guest'];
+    const availableRoles = ['admin', 'accounts_officer', 'manager', 'user', 'guest'];
     const availablePermissions = [
         'dashboard_view',
         'user_manage',

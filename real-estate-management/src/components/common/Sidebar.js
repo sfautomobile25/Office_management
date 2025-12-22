@@ -4,6 +4,7 @@ import { NavLink } from 'react-router-dom';
 function Sidebar({ isOpen, user }) {
     const menuItems = [
         { path: '/admin/dashboard', label: 'Dashboard', icon: '📊' },
+        { path: '/admin/accounts', label: 'Accounts Management', icon: '💰' },
         { path: '/admin/users', label: 'User Management', icon: '👥' },
         { path: '/admin/permissions', label: 'Permission Settings', icon: '🔐' },
         { path: '/admin/config', label: 'System Configuration', icon: '⚙️' },

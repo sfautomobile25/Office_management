@@ -22,6 +22,7 @@ import MultiLanguage from './components/admin/MultiLanguage';
 import CurrencyConverter from './components/admin/CurrencyConverter';
 import Register from './components/Register';
 import ForgotPassword from './components/ForgotPassword';
+import Accounts from './components/admin/Accounts';
 
 import './App.css';
 
@@ -137,6 +138,7 @@ function App() {
                                         <Route path="languages" element={<MultiLanguage />} />
                                         <Route path="currency" element={<CurrencyConverter />} />
                                         <Route path="" element={<Navigate to="dashboard" replace />} />
+                                        <Route path="accounts" element={<Accounts />} />
                                     </Routes>
                                 </Layout>
                             ) : (

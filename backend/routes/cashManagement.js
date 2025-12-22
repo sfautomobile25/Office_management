@@ -1,0 +1,460 @@
+const express = require('express');
+const router = express.Router();
+const { runAsync, getAsync, allAsync } = require('../database');
+
+// Get daily cash balance
+router.get('/daily-cash', async (req, res) => {
+    try {
+        const { date, start_date, end_date } = req.query;
+        
+        let query = 'SELECT * FROM daily_cash_balance WHERE 1=1';
+        const params = [];
+        
+        if (date) {
+            query += ' AND date = ?';
+            params.push(date);
+        }
+        
+        if (start_date && end_date) {
+            query += ' AND date BETWEEN ? AND ?';
+            params.push(start_date, end_date);
+        }
+        
+        query += ' ORDER BY date DESC';
+        
+        const balances = await allAsync(query, params);
+        
+        res.json({
+            success: true,
+            balances
+        });
+    } catch (error) {
+        console.error('Error fetching daily cash:', error);
+        res.status(500).json({ success: false, error: 'Failed to fetch daily cash' });
+    }
+});
+
+// Update daily cash balance
+router.post('/daily-cash', async (req, res) => {
+    const { date, opening_balance, cash_received, cash_paid } = req.body;
+    
+    try {
+        const closing_balance = parseFloat(opening_balance) + parseFloat(cash_received) - parseFloat(cash_paid);
+        
+        const result = await runAsync(
+            `INSERT OR REPLACE INTO daily_cash_balance 
+             (date, opening_balance, cash_received, cash_paid, closing_balance)
+             VALUES (?, ?, ?, ?, ?)`,
+            [date, opening_balance, cash_received, cash_paid, closing_balance]
+        );
+        
+        res.json({
+            success: true,
+            message: 'Daily cash balance updated',
+            balance: {
+                date,
+                opening_balance,
+                cash_received,
+                cash_paid,
+                closing_balance
+            }
+        });
+    } catch (error) {
+        console.error('Error updating daily cash:', error);
+        res.status(500).json({ success: false, error: 'Failed to update daily cash' });
+    }
+});
+
+// Get cash transactions
+router.get('/cash-transactions', async (req, res) => {
+    try {
+        const { date, type, category, status } = req.query;
+        
+        let query = `
+            SELECT ct.*, u.username as created_by_name, v.username as verified_by_name
+            FROM cash_transactions ct
+            LEFT JOIN users u ON ct.created_by = u.id
+            LEFT JOIN users v ON ct.verified_by = v.id
+            WHERE 1=1
+        `;
+        const params = [];
+        
+        if (date) {
+            query += ' AND ct.date = ?';
+            params.push(date);
+        }
+        
+        if (type) {
+            query += ' AND ct.transaction_type = ?';
+            params.push(type);
+        }
+        
+        if (category) {
+            query += ' AND ct.category = ?';
+            params.push(category);
+        }
+        
+        if (status) {
+            query += ' AND ct.status = ?';
+            params.push(status);
+        }
+        
+        query += ' ORDER BY ct.date DESC, ct.time DESC';
+        
+        const transactions = await allAsync(query, params);
+        
+        // Calculate totals
+        const totals = transactions.reduce((acc, t) => {
+            if (t.transaction_type === 'receipt') {
+                acc.total_receipts += parseFloat(t.amount);
+            } else if (t.transaction_type === 'payment') {
+                acc.total_payments += parseFloat(t.amount);
+            }
+            return acc;
+        }, { total_receipts: 0, total_payments: 0 });
+        
+        res.json({
+            success: true,
+            transactions,
+            totals
+        });
+    } catch (error) {
+        console.error('Error fetching cash transactions:', error);
+        res.status(500).json({ success: false, error: 'Failed to fetch cash transactions' });
+    }
+});
+
+// Create cash transaction
+router.post('/cash-transactions', async (req, res) => {
+    const {
+        date, time, description, amount, transaction_type, category,
+        payment_method, reference_number, received_from, paid_to, notes
+    } = req.body;
+    
+    try {
+        // Generate transaction ID
+        const timestamp = Date.now();
+        const transaction_id = `CASH-${timestamp}-${Math.floor(Math.random() * 1000)}`;
+        
+        const result = await runAsync(
+            `INSERT INTO cash_transactions 
+             (transaction_id, date, time, description, amount, transaction_type, category,
+              payment_method, reference_number, received_from, paid_to, notes, created_by)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [transaction_id, date, time || new Date().toTimeString().split(' ')[0], 
+             description, amount, transaction_type, category, payment_method, 
+             reference_number, received_from, paid_to, notes, req.session.user.id]
+        );
+        
+        // Update daily cash balance
+        await updateDailyCashBalance(date, transaction_type, amount);
+        
+        res.json({
+            success: true,
+            message: 'Cash transaction recorded',
+            transaction_id,
+            transactionId: result.lastID
+        });
+    } catch (error) {
+        console.error('Error creating cash transaction:', error);
+        res.status(500).json({ success: false, error: 'Failed to record cash transaction' });
+    }
+});
+
+// Update daily cash balance helper
+async function updateDailyCashBalance(date, type, amount) {
+    try {
+        const today = await getAsync('SELECT * FROM daily_cash_balance WHERE date = ?', [date]);
+        
+        if (today) {
+            if (type === 'receipt') {
+                await runAsync(
+                    `UPDATE daily_cash_balance 
+                     SET cash_received = cash_received + ?, 
+                         closing_balance = closing_balance + ?
+                     WHERE date = ?`,
+                    [amount, amount, date]
+                );
+            } else if (type === 'payment') {
+                await runAsync(
+                    `UPDATE daily_cash_balance 
+                     SET cash_paid = cash_paid + ?, 
+                         closing_balance = closing_balance - ?
+                     WHERE date = ?`,
+                    [amount, amount, date]
+                );
+            }
+        } else {
+            // Create new entry for the day
+            const opening = await getLatestClosingBalance(date);
+            
+            if (type === 'receipt') {
+                await runAsync(
+                    `INSERT INTO daily_cash_balance 
+                     (date, opening_balance, cash_received, cash_paid, closing_balance)
+                     VALUES (?, ?, ?, ?, ?)`,
+                    [date, opening, amount, 0, parseFloat(opening) + parseFloat(amount)]
+                );
+            } else if (type === 'payment') {
+                await runAsync(
+                    `INSERT INTO daily_cash_balance 
+                     (date, opening_balance, cash_received, cash_paid, closing_balance)
+                     VALUES (?, ?, ?, ?, ?)`,
+                    [date, opening, 0, amount, parseFloat(opening) - parseFloat(amount)]
+                );
+            }
+        }
+    } catch (error) {
+        console.error('Error updating daily cash balance:', error);
+    }
+}
+
+// Get latest closing balance
+async function getLatestClosingBalance(date) {
+    try {
+        const latest = await getAsync(
+            'SELECT closing_balance FROM daily_cash_balance WHERE date < ? ORDER BY date DESC LIMIT 1',
+            [date]
+        );
+        return latest ? latest.closing_balance : 0;
+    } catch (error) {
+        return 0;
+    }
+}
+
+// Get daily summary
+router.get('/daily-summary', async (req, res) => {
+    try {
+        const { date, start_date, end_date } = req.query;
+        
+        let query = 'SELECT * FROM daily_summary WHERE 1=1';
+        const params = [];
+        
+        if (date) {
+            query += ' AND date = ?';
+            params.push(date);
+        }
+        
+        if (start_date && end_date) {
+            query += ' AND date BETWEEN ? AND ?';
+            params.push(start_date, end_date);
+        }
+        
+        query += ' ORDER BY date DESC LIMIT 30';
+        
+        const summaries = await allAsync(query, params);
+        
+        // Calculate period totals
+        const periodTotals = summaries.reduce((acc, s) => ({
+            total_cash_in: acc.total_cash_in + parseFloat(s.total_cash_in),
+            total_cash_out: acc.total_cash_out + parseFloat(s.total_cash_out),
+            total_bank_in: acc.total_bank_in + parseFloat(s.total_bank_in),
+            total_bank_out: acc.total_bank_out + parseFloat(s.total_bank_out),
+            net_cash_flow: acc.net_cash_flow + parseFloat(s.net_cash_flow)
+        }), {
+            total_cash_in: 0,
+            total_cash_out: 0,
+            total_bank_in: 0,
+            total_bank_out: 0,
+            net_cash_flow: 0
+        });
+        
+        res.json({
+            success: true,
+            summaries,
+            periodTotals
+        });
+    } catch (error) {
+        console.error('Error fetching daily summary:', error);
+        res.status(500).json({ success: false, error: 'Failed to fetch daily summary' });
+    }
+});
+
+// Generate daily summary
+router.post('/generate-daily-summary', async (req, res) => {
+    const { date } = req.body;
+    
+    try {
+        // Calculate totals for the day
+        const cashIn = await getAsync(
+            `SELECT SUM(amount) as total FROM cash_transactions 
+             WHERE date = ? AND transaction_type = 'receipt' AND status = 'approved'`,
+            [date]
+        );
+        
+        const cashOut = await getAsync(
+            `SELECT SUM(amount) as total FROM cash_transactions 
+             WHERE date = ? AND transaction_type = 'payment' AND status = 'approved'`,
+            [date]
+        );
+        
+        const cashBalance = await getAsync(
+            'SELECT * FROM daily_cash_balance WHERE date = ?',
+            [date]
+        );
+        
+        // Calculate net cash flow
+        const netCashFlow = (cashIn.total || 0) - (cashOut.total || 0);
+        
+        // Update or create daily summary
+        await runAsync(
+            `INSERT OR REPLACE INTO daily_summary 
+             (date, total_cash_in, total_cash_out, net_cash_flow, 
+              opening_cash, closing_cash)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [date, cashIn.total || 0, cashOut.total || 0, netCashFlow,
+             cashBalance ? cashBalance.opening_balance : 0,
+             cashBalance ? cashBalance.closing_balance : 0]
+        );
+        
+        res.json({
+            success: true,
+            message: 'Daily summary generated',
+            summary: {
+                date,
+                total_cash_in: cashIn.total || 0,
+                total_cash_out: cashOut.total || 0,
+                net_cash_flow: netCashFlow,
+                opening_cash: cashBalance ? cashBalance.opening_balance : 0,
+                closing_cash: cashBalance ? cashBalance.closing_balance : 0
+            }
+        });
+    } catch (error) {
+        console.error('Error generating daily summary:', error);
+        res.status(500).json({ success: false, error: 'Failed to generate daily summary' });
+    }
+});
+
+// Get cash position overview
+router.get('/cash-position', async (req, res) => {
+    try {
+        // Today's cash
+        const today = new Date().toISOString().split('T')[0];
+        const todayCash = await getAsync(
+            'SELECT * FROM daily_cash_balance WHERE date = ?',
+            [today]
+        );
+        
+        // Yesterday's cash
+        const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+        const yesterdayCash = await getAsync(
+            'SELECT * FROM daily_cash_balance WHERE date = ?',
+            [yesterday]
+        );
+        
+        // Weekly cash flow
+        const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
+        const weeklyFlow = await getAsync(
+            `SELECT SUM(cash_received) as total_in, SUM(cash_paid) as total_out
+             FROM daily_cash_balance WHERE date >= ?`,
+            [weekAgo]
+        );
+        
+        // Monthly cash flow
+        const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
+        const monthlyFlow = await getAsync(
+            `SELECT SUM(cash_received) as total_in, SUM(cash_paid) as total_out
+             FROM daily_cash_balance WHERE date >= ?`,
+            [monthAgo]
+        );
+        
+        // Today's transactions count
+        const todayTransactions = await getAsync(
+            `SELECT COUNT(*) as count,
+                    SUM(CASE WHEN transaction_type = 'receipt' THEN amount ELSE 0 END) as receipts,
+                    SUM(CASE WHEN transaction_type = 'payment' THEN amount ELSE 0 END) as payments
+             FROM cash_transactions WHERE date = ? AND status = 'approved'`,
+            [today]
+        );
+        
+        res.json({
+            success: true,
+            cashPosition: {
+                today: todayCash || { closing_balance: 0 },
+                yesterday: yesterdayCash || { closing_balance: 0 },
+                dailyChange: todayCash ? 
+                    todayCash.closing_balance - (yesterdayCash ? yesterdayCash.closing_balance : 0) : 0,
+                weeklyFlow: {
+                    in: weeklyFlow.total_in || 0,
+                    out: weeklyFlow.total_out || 0,
+                    net: (weeklyFlow.total_in || 0) - (weeklyFlow.total_out || 0)
+                },
+                monthlyFlow: {
+                    in: monthlyFlow.total_in || 0,
+                    out: monthlyFlow.total_out || 0,
+                    net: (monthlyFlow.total_in || 0) - (monthlyFlow.total_out || 0)
+                },
+                todayTransactions: {
+                    count: todayTransactions.count || 0,
+                    receipts: todayTransactions.receipts || 0,
+                    payments: todayTransactions.payments || 0
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Error fetching cash position:', error);
+        res.status(500).json({ success: false, error: 'Failed to fetch cash position' });
+    }
+});
+
+// Get expense categories with spending
+router.get('/expense-analysis', async (req, res) => {
+    try {
+        const { period } = req.query; // 'day', 'week', 'month', 'year'
+        
+        let dateFilter = '';
+        const now = new Date();
+        
+        switch(period) {
+            case 'day':
+                dateFilter = `AND ct.date = '${now.toISOString().split('T')[0]}'`;
+                break;
+            case 'week':
+                const weekAgo = new Date(now.getTime() - 7 * 86400000);
+                dateFilter = `AND ct.date >= '${weekAgo.toISOString().split('T')[0]}'`;
+                break;
+            case 'month':
+                const monthAgo = new Date(now.getTime() - 30 * 86400000);
+                dateFilter = `AND ct.date >= '${monthAgo.toISOString().split('T')[0]}'`;
+                break;
+            case 'year':
+                const yearAgo = new Date(now.getTime() - 365 * 86400000);
+                dateFilter = `AND ct.date >= '${yearAgo.toISOString().split('T')[0]}'`;
+                break;
+        }
+        
+        const expenses = await allAsync(`
+            SELECT ec.category_name, ec.budget_amount,
+                   COALESCE(SUM(ct.amount), 0) as actual_spent,
+                   COUNT(ct.id) as transaction_count
+            FROM expense_categories ec
+            LEFT JOIN cash_transactions ct ON ec.category_name = ct.category 
+                AND ct.transaction_type = 'payment' 
+                AND ct.status = 'approved'
+                ${dateFilter}
+            WHERE ec.status = 'active'
+            GROUP BY ec.id
+            ORDER BY actual_spent DESC
+        `);
+        
+        // Calculate totals
+        const totals = expenses.reduce((acc, exp) => ({
+            budget: acc.budget + parseFloat(exp.budget_amount),
+            spent: acc.spent + parseFloat(exp.actual_spent),
+            count: acc.count + exp.transaction_count
+        }), { budget: 0, spent: 0, count: 0 });
+        
+        res.json({
+            success: true,
+            period,
+            expenses,
+            totals,
+            variance: totals.budget - totals.spent
+        });
+    } catch (error) {
+        console.error('Error fetching expense analysis:', error);
+        res.status(500).json({ success: false, error: 'Failed to fetch expense analysis' });
+    }
+});
+
+module.exports = router;
