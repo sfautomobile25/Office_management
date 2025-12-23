@@ -2,6 +2,22 @@ const express = require('express');
 const router = express.Router();
 const { runAsync, getAsync, allAsync } = require('../database');
 
+function getDhakaDateString(d = new Date()) {
+  // YYYY-MM-DD in Asia/Dhaka
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Dhaka',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(d);
+
+  const y = parts.find(p => p.type === 'year').value;
+  const m = parts.find(p => p.type === 'month').value;
+  const day = parts.find(p => p.type === 'day').value;
+  return `${y}-${m}-${day}`;
+}
+
+
 // Get daily cash balance
 router.get('/daily-cash', async (req, res) => {
     try {
@@ -34,35 +50,46 @@ router.get('/daily-cash', async (req, res) => {
     }
 });
 
-// Update daily cash balance
 router.post('/daily-cash', async (req, res) => {
-    const { date, opening_balance, cash_received, cash_paid } = req.body;
-    
-    try {
-        const closing_balance = parseFloat(opening_balance) + parseFloat(cash_received) - parseFloat(cash_paid);
-        
-        const result = await runAsync(
-            `INSERT OR REPLACE INTO daily_cash_balance 
-             (date, opening_balance, cash_received, cash_paid, closing_balance)
-             VALUES (?, ?, ?, ?, ?)`,
-            [date, opening_balance, cash_received, cash_paid, closing_balance]
-        );
-        
-        res.json({
-            success: true,
-            message: 'Daily cash balance updated',
-            balance: {
-                date,
-                opening_balance,
-                cash_received,
-                cash_paid,
-                closing_balance
-            }
-        });
-    } catch (error) {
-        console.error('Error updating daily cash:', error);
-        res.status(500).json({ success: false, error: 'Failed to update daily cash' });
-    }
+  const { date, opening_balance } = req.body;
+
+  try {
+    // ✅ Always calculate from approved transactions
+    const cashIn = await getAsync(
+      `SELECT COALESCE(SUM(amount), 0) as total
+       FROM cash_transactions
+       WHERE date = ? AND transaction_type = 'receipt' AND status = 'approved'`,
+      [date]
+    );
+
+    const cashOut = await getAsync(
+      `SELECT COALESCE(SUM(amount), 0) as total
+       FROM cash_transactions
+       WHERE date = ? AND transaction_type = 'payment' AND status = 'approved'`,
+      [date]
+    );
+
+    const received = Number(cashIn.total || 0);
+    const paid = Number(cashOut.total || 0);
+    const opening = Number(opening_balance || 0);
+    const closing = opening + received - paid;
+
+    await runAsync(
+      `INSERT OR REPLACE INTO daily_cash_balance
+       (date, opening_balance, cash_received, cash_paid, closing_balance)
+       VALUES (?, ?, ?, ?, ?)`,
+      [date, opening, received, paid, closing]
+    );
+
+    res.json({
+      success: true,
+      message: 'Daily cash recalculated from approved transactions',
+      balance: { date, opening_balance: opening, cash_received: received, cash_paid: paid, closing_balance: closing }
+    });
+  } catch (error) {
+    console.error('Error updating daily cash:', error);
+    res.status(500).json({ success: false, error: 'Failed to update daily cash' });
+  }
 });
 
 // Get cash transactions
@@ -160,52 +187,52 @@ router.post('/cash-transactions', async (req, res) => {
 });
 
 // Update daily cash balance helper
-async function updateDailyCashBalance(date, type, amount) {
-    try {
-        const today = await getAsync('SELECT * FROM daily_cash_balance WHERE date = ?', [date]);
+// async function updateDailyCashBalance(date, type, amount) {
+//     try {
+//         const today = await getAsync('SELECT * FROM daily_cash_balance WHERE date = ?', [date]);
         
-        if (today) {
-            if (type === 'receipt') {
-                await runAsync(
-                    `UPDATE daily_cash_balance 
-                     SET cash_received = cash_received + ?, 
-                         closing_balance = closing_balance + ?
-                     WHERE date = ?`,
-                    [amount, amount, date]
-                );
-            } else if (type === 'payment') {
-                await runAsync(
-                    `UPDATE daily_cash_balance 
-                     SET cash_paid = cash_paid + ?, 
-                         closing_balance = closing_balance - ?
-                     WHERE date = ?`,
-                    [amount, amount, date]
-                );
-            }
-        } else {
-            // Create new entry for the day
-            const opening = await getLatestClosingBalance(date);
+//         if (today) {
+//             if (type === 'receipt') {
+//                 await runAsync(
+//                     `UPDATE daily_cash_balance 
+//                      SET cash_received = cash_received + ?, 
+//                          closing_balance = closing_balance + ?
+//                      WHERE date = ?`,
+//                     [amount, amount, date]
+//                 );
+//             } else if (type === 'payment') {
+//                 await runAsync(
+//                     `UPDATE daily_cash_balance 
+//                      SET cash_paid = cash_paid + ?, 
+//                          closing_balance = closing_balance - ?
+//                      WHERE date = ?`,
+//                     [amount, amount, date]
+//                 );
+//             }
+//         } else {
+//             // Create new entry for the day
+//             const opening = await getLatestClosingBalance(date);
             
-            if (type === 'receipt') {
-                await runAsync(
-                    `INSERT INTO daily_cash_balance 
-                     (date, opening_balance, cash_received, cash_paid, closing_balance)
-                     VALUES (?, ?, ?, ?, ?)`,
-                    [date, opening, amount, 0, parseFloat(opening) + parseFloat(amount)]
-                );
-            } else if (type === 'payment') {
-                await runAsync(
-                    `INSERT INTO daily_cash_balance 
-                     (date, opening_balance, cash_received, cash_paid, closing_balance)
-                     VALUES (?, ?, ?, ?, ?)`,
-                    [date, opening, 0, amount, parseFloat(opening) - parseFloat(amount)]
-                );
-            }
-        }
-    } catch (error) {
-        console.error('Error updating daily cash balance:', error);
-    }
-}
+//             if (type === 'receipt') {
+//                 await runAsync(
+//                     `INSERT INTO daily_cash_balance 
+//                      (date, opening_balance, cash_received, cash_paid, closing_balance)
+//                      VALUES (?, ?, ?, ?, ?)`,
+//                     [date, opening, amount, 0, parseFloat(opening) + parseFloat(amount)]
+//                 );
+//             } else if (type === 'payment') {
+//                 await runAsync(
+//                     `INSERT INTO daily_cash_balance 
+//                      (date, opening_balance, cash_received, cash_paid, closing_balance)
+//                      VALUES (?, ?, ?, ?, ?)`,
+//                     [date, opening, 0, amount, parseFloat(opening) - parseFloat(amount)]
+//                 );
+//             }
+//         }
+//     } catch (error) {
+//         console.error('Error updating daily cash balance:', error);
+//     }
+// }
 
 // Get latest closing balance
 async function getLatestClosingBalance(date) {
@@ -327,14 +354,14 @@ router.post('/generate-daily-summary', async (req, res) => {
 router.get('/cash-position', async (req, res) => {
     try {
         // Today's cash
-        const today = new Date().toISOString().split('T')[0];
+        const today = getDhakaDateString();
         const todayCash = await getAsync(
             'SELECT * FROM daily_cash_balance WHERE date = ?',
             [today]
         );
         
         // Yesterday's cash
-        const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+        const yesterday = getDhakaDateString(new Date(Date.now() - 86400000));
         const yesterdayCash = await getAsync(
             'SELECT * FROM daily_cash_balance WHERE date = ?',
             [yesterday]

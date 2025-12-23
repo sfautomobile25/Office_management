@@ -319,21 +319,29 @@ router.get('/reports', async (req, res) => {
     try {
         const { report_type, period_start, period_end } = req.query;
         
-        if (report_type === 'trial_balance') {
-            const trialBalance = await allAsync(`
-                SELECT a.account_number, a.account_name, a.account_type,
-                       COALESCE(SUM(CASE WHEN t.transaction_type = 'debit' THEN t.amount ELSE 0 END), 0) as total_debit,
-                       COALESCE(SUM(CASE WHEN t.transaction_type = 'credit' THEN t.amount ELSE 0 END), 0) as total_credit,
-                       a.balance
-                FROM accounts a
-                LEFT JOIN transactions t ON a.id = t.account_id 
-                    AND t.status = 'approved'
-                    AND (? IS NULL OR t.date >= ?)
-                    AND (? IS NULL OR t.date <= ?)
-                WHERE a.status = 'active'
-                GROUP BY a.id
-                ORDER BY a.account_number
-            `, [period_start, period_start, period_end, period_end]);
+                if (report_type === 'trial_balance') {
+                const trialBalance = await allAsync(
+                    `
+                    SELECT
+                    a.account_number,
+                    a.account_name,
+                    a.account_type,
+                    COALESCE(SUM(jel.debit), 0) AS total_debit,
+                    COALESCE(SUM(jel.credit), 0) AS total_credit,
+                    (COALESCE(SUM(jel.debit), 0) - COALESCE(SUM(jel.credit), 0)) AS net_movement,
+                    a.balance
+                    FROM accounts a
+                    LEFT JOIN journal_entry_lines jel ON jel.account_id = a.id
+                    LEFT JOIN journal_entries je ON je.id = jel.journal_entry_id
+                    AND je.status = 'posted'
+                    AND (? IS NULL OR je.date >= ?)
+                    AND (? IS NULL OR je.date <= ?)
+                    WHERE a.status = 'active'
+                    GROUP BY a.id
+                    ORDER BY a.account_number
+                    `,
+                    [period_start, period_start, period_end, period_end]
+                );
             
             return res.json({
                 success: true,
