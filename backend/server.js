@@ -42,6 +42,7 @@ const authRoutes = require('./routes/auth');
 const adminRoutes = require('./routes/admin');
 const accountsRoutes = require('./routes/accounts');
 const cashManagementRoutes = require('./routes/cashManagement');
+const cashApprovalRoutes = require('./routes/cashApproval');
 
 
 // Use routes
@@ -49,6 +50,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/accounts', accountsRoutes);
 app.use('/api/cash', cashManagementRoutes);
+app.use('/api/cash', cashApprovalRoutes);
 
 // Start server
 app.listen(PORT, () => {

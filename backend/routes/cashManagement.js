@@ -146,8 +146,6 @@ router.post('/cash-transactions', async (req, res) => {
              reference_number, received_from, paid_to, notes, req.session.user.id]
         );
         
-        // Update daily cash balance
-        await updateDailyCashBalance(date, transaction_type, amount);
         
         res.json({
             success: true,

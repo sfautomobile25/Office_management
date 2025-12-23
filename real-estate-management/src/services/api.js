@@ -137,4 +137,14 @@ export const systemAPI = {
     test: () => API.get('/test')
 };
 
+export const cashApprovalAPI = {
+  getPending: () => API.get('/cash/pending-transactions'),
+  approve: (id) => API.post(`/cash/approve-transaction/${id}`),
+  reject: (id, reason) => API.post(`/cash/reject-transaction/${id}`, { reason }),
+  getMonthlyByStatus: (status, month) =>
+    API.get(`/cash/transactions?status=${encodeURIComponent(status)}&month=${encodeURIComponent(month)}`)
+};
+
+
+
 export default API;
