@@ -138,7 +138,7 @@ function App() {
                                         <Route path="languages" element={<MultiLanguage />} />
                                         <Route path="currency" element={<CurrencyConverter />} />
                                         <Route path="" element={<Navigate to="dashboard" replace />} />
-                                        <Route path="accounts" element={<Accounts />} />
+                                        <Route path="accounts" element={<Accounts />} />                               
                                     </Routes>
                                 </Layout>
                             ) : (
