@@ -10,6 +10,10 @@ function Accounts() {
     const [dailyTransactions, setDailyTransactions] = useState([]);
     const [dailySummary, setDailySummary] = useState([]);
     const [expenseAnalysis, setExpenseAnalysis] = useState(null);
+    const [recentBalances, setRecentBalances] = useState([]);
+    const [recentBalancesLoading, setRecentBalancesLoading] = useState(false);
+    const [recentBalancesError, setRecentBalancesError] = useState('');
+
     
     // Form states
     const [newCashTransaction, setNewCashTransaction] = useState({
@@ -32,7 +36,6 @@ function Accounts() {
         cash_received: '',
         cash_paid: ''
     });
-
 
     useEffect(() => {
         fetchData();
@@ -126,6 +129,54 @@ function Accounts() {
             alert('Failed to generate report');
         }
     };
+
+    const getDhakaDateString = (date = new Date()) => {
+  // Always format date as YYYY-MM-DD in Asia/Dhaka
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Dhaka',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(date);
+
+  const y = parts.find(p => p.type === 'year')?.value;
+  const m = parts.find(p => p.type === 'month')?.value;
+  const d = parts.find(p => p.type === 'day')?.value;
+  return `${y}-${m}-${d}`;
+};
+
+const loadRecentDailyBalances = async () => {
+  try {
+    setRecentBalancesError('');
+    setRecentBalancesLoading(true);
+
+    // last 30 days (Dhaka time)
+    const end = new Date();
+    const start = new Date();
+    start.setDate(start.getDate() - 30);
+
+    const params = {
+      start_date: getDhakaDateString(start),
+      end_date: getDhakaDateString(end),
+    };
+
+    const res = await cashManagementAPI.getDailyCash(params);
+
+    if (res.data?.success) {
+      // backend returns balances ordered DESC by date already
+      setRecentBalances(res.data.balances || []);
+    } else {
+      setRecentBalances([]);
+      setRecentBalancesError(res.data?.error || 'Failed to load recent balances');
+    }
+  } catch (err) {
+    setRecentBalances([]);
+    setRecentBalancesError(err.response?.data?.error || 'Failed to load recent balances');
+  } finally {
+    setRecentBalancesLoading(false);
+  }
+};
+
 
 const renderDashboard = () => {
     if (!cashPosition) return null;
@@ -644,6 +695,15 @@ const renderDashboard = () => {
                 <div className="recent-balances">
                     <h4>Recent Daily Balances</h4>
                     <div className="table-container">
+                        <div className="recent-balance-toolbar">
+  <button
+    className="btn-secondary"
+    onClick={loadRecentDailyBalances}
+    disabled={recentBalancesLoading}
+  >
+    {recentBalancesLoading ? 'Refreshing...' : 'Refresh'}
+  </button>
+</div>
                         <table className="data-table">
                             <thead>
                                 <tr>
@@ -655,15 +715,41 @@ const renderDashboard = () => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {/* You would fetch and display recent balances here */}
-                                <tr>
+                                {recentBalancesError && (
+                                    <tr>
+                                    <td colSpan="5" className="text-center" style={{ color: '#f56565' }}>
+                                        {recentBalancesError}
+                                    </td>
+                                    </tr>
+                                )}
+
+                                {!recentBalancesError && recentBalances.length === 0 && (
+                                    <tr>
                                     <td colSpan="5" className="text-center">
-                                        <button className="btn-secondary">
-                                            Load Recent Balances
+                                        <button
+                                        className="btn-secondary"
+                                        onClick={loadRecentDailyBalances}
+                                        disabled={recentBalancesLoading}
+                                        >
+                                        {recentBalancesLoading ? 'Loading...' : 'Load Recent Balances'}
                                         </button>
                                     </td>
-                                </tr>
-                            </tbody>
+                                    </tr>
+                                )}
+
+                                {recentBalances.length > 0 && recentBalances.map((b) => (
+                                    <tr key={b.date}>
+                                    <td>{b.date}</td>
+                                    <td className="text-right">৳{parseFloat(b.opening_balance || 0).toFixed(2)}</td>
+                                    <td className="text-right">৳{parseFloat(b.cash_received || 0).toFixed(2)}</td>
+                                    <td className="text-right">৳{parseFloat(b.cash_paid || 0).toFixed(2)}</td>
+                                    <td className="text-right">৳{parseFloat(b.closing_balance || 0).toFixed(2)}</td>
+                                    </tr>
+                                ))}
+
+                        
+                        </tbody>
+
                         </table>
                     </div>
                 </div>
