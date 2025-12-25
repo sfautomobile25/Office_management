@@ -33,6 +33,7 @@ function Accounts() {
         cash_paid: ''
     });
 
+
     useEffect(() => {
         fetchData();
     }, [activeTab]);
@@ -126,210 +127,173 @@ function Accounts() {
         }
     };
 
-    const renderDashboard = () => {
-        if (!cashPosition) return null;
-        
-        const { today, yesterday, dailyChange, weeklyFlow, monthlyFlow, todayTransactions } = cashPosition;
-        
-        return (
-            <div className="accounts-dashboard">
-                <div className="dashboard-header">
-                    <h3>📊 Cash Flow Dashboard</h3>
-                    <div className="dashboard-actions">
-                        <button className="btn-primary" onClick={generateDailyReport}>
-                            Generate Daily Report
-                        </button>
-                        <button className="btn-secondary" onClick={() => setActiveTab('daily-transactions')}>
-                            Record Transaction
-                        </button>
+const renderDashboard = () => {
+    if (!cashPosition) return null;
+
+    const { today, yesterday, dailyChange, weeklyFlow, monthlyFlow, todayTransactions } = cashPosition;
+
+    // Dhaka date-time label
+    const dhakaNowLabel = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Asia/Dhaka',
+        year: 'numeric',
+        month: 'short',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+    }).format(new Date());
+
+    // BDT formatter
+    const formatBDT = (value) =>
+        new Intl.NumberFormat('en-BD', {
+            style: 'currency',
+            currency: 'BDT',
+            maximumFractionDigits: 2
+        }).format(Number(value || 0));
+
+    const todayBalance = Number(today?.closing_balance || 0);
+    const change = Number(dailyChange || 0);
+
+    return (
+        <div className="accounts-dashboard">
+            <div className="dashboard-header">
+                <h3>📊 Cash Flow Dashboard</h3>
+                <div className="dashboard-actions">
+                    <button className="btn-primary" onClick={generateDailyReport}>
+                        Generate Daily Report
+                    </button>
+                    <button className="btn-secondary" onClick={() => setActiveTab('daily-transactions')}>
+                        Record Transaction
+                    </button>
+                </div>
+            </div>
+
+            <div className="cash-position-cards">
+                <div className="cash-card primary">
+                    <div className="card-header">
+                        <h4>Today's Cash Balance</h4>
+                        <span className="card-date">{dhakaNowLabel} (Dhaka)</span>
+                    </div>
+                    <div className="card-body">
+                        <div className="cash-amount">
+                            {formatBDT(todayBalance)}
+                        </div>
+                        <div className={formatBDT `cash-change {change >= 0 ? 'positive' : 'negative'}`}>
+                            {change >= 0 ? '↗' : '↘'} {formatBDT(Math.abs(change))}
+                            <span> from yesterday</span>
+                        </div>
                     </div>
                 </div>
-                
-                <div className="cash-position-cards">
-                    <div className="cash-card primary">
-                        <div className="card-header">
-                            <h4>Today's Cash Balance</h4>
-                            <span className="card-date">{new Date().toLocaleDateString()}</span>
-                        </div>
-                        <div className="card-body">
-                            <div className="cash-amount">
-                                ${today.closing_balance ? parseFloat(today.closing_balance).toFixed(2) : '0.00'}
-                            </div>
-                            <div className={`cash-change ${dailyChange >= 0 ? 'positive' : 'negative'}`}>
-                                {dailyChange >= 0 ? '↗' : '↘'} ${Math.abs(dailyChange).toFixed(2)} 
-                                <span> from yesterday</span>
-                            </div>
-                        </div>
+
+                <div className="cash-card secondary">
+                    <div className="card-header">
+                        <h4>Today's Activity</h4>
                     </div>
-                    
-                    <div className="cash-card secondary">
-                        <div className="card-header">
-                            <h4>Today's Activity</h4>
-                        </div>
-                        <div className="card-body">
-                            <div className="activity-stats">
-                                <div className="activity-item">
-                                    <span className="label">Transactions:</span>
-                                    <span className="value">{todayTransactions.count}</span>
-                                </div>
-                                <div className="activity-item">
-                                    <span className="label">Cash In:</span>
-                                    <span className="value positive">${parseFloat(todayTransactions.receipts || 0).toFixed(2)}</span>
-                                </div>
-                                <div className="activity-item">
-                                    <span className="label">Cash Out:</span>
-                                    <span className="value negative">${parseFloat(todayTransactions.payments || 0).toFixed(2)}</span>
-                                </div>
+                    <div className="card-body">
+                        <div className="activity-stats">
+                            <div className="activity-item">
+                                <span className="label">Transactions:</span>
+                                <span className="value">{todayTransactions?.count || 0}</span>
                             </div>
-                        </div>
-                    </div>
-                    
-                    <div className="cash-card info">
-                        <div className="card-header">
-                            <h4>Weekly Flow</h4>
-                        </div>
-                        <div className="card-body">
-                            <div className="flow-stats">
-                                <div className="flow-item">
-                                    <span className="label">In:</span>
-                                    <span className="value">${parseFloat(weeklyFlow.in || 0).toFixed(2)}</span>
-                                </div>
-                                <div className="flow-item">
-                                    <span className="label">Out:</span>
-                                    <span className="value">${parseFloat(weeklyFlow.out || 0).toFixed(2)}</span>
-                                </div>
-                                <div className="flow-item total">
-                                    <span className="label">Net:</span>
-                                    <span className={`value ${weeklyFlow.net >= 0 ? 'positive' : 'negative'}`}>
-                                        ${parseFloat(weeklyFlow.net || 0).toFixed(2)}
-                                    </span>
-                                </div>
+                            <div className="activity-item">
+                                <span className="label">Cash In:</span>
+                                <span className="value positive">{formatBDT(todayTransactions?.receipts || 0)}</span>
+                            </div>
+                            <div className="activity-item">
+                                <span className="label">Cash Out:</span>
+                                <span className="value negative">{formatBDT(todayTransactions?.payments || 0)}</span>
                             </div>
                         </div>
                     </div>
                 </div>
-                
-                <div className="dashboard-charts">
-                    <div className="chart-section">
-                        <h4>Daily Cash Flow (Last 7 Days)</h4>
-                        <div className="cash-flow-chart">
-                            {dailySummary.slice(0, 7).reverse().map((day, index) => (
-                                <div key={index} className="chart-bar">
-                                    <div className="bar-group">
-                                        <div 
-                                            className="bar in"
-                                            style={{ height: `${(day.total_cash_in / Math.max(...dailySummary.map(d => d.total_cash_in))) * 80}%` }}
-                                            title={`In: $${day.total_cash_in}`}
-                                        ></div>
-                                        <div 
-                                            className="bar out"
-                                            style={{ height: `${(day.total_cash_out / Math.max(...dailySummary.map(d => d.total_cash_out))) * 80}%` }}
-                                            title={`Out: $${day.total_cash_out}`}
-                                        ></div>
-                                    </div>
-                                    <div className="chart-label">
-                                        {new Date(day.date).toLocaleDateString('en-US', { weekday: 'short' })}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                        <div className="chart-legend">
-                            <div className="legend-item">
-                                <span className="color in"></span>
-                                <span>Cash In</span>
-                            </div>
-                            <div className="legend-item">
-                                <span className="color out"></span>
-                                <span>Cash Out</span>
-                            </div>
-                        </div>
+
+                <div className="cash-card info">
+                    <div className="card-header">
+                        <h4>Weekly Flow</h4>
                     </div>
-                    
-                    <div className="chart-section">
-                        <h4>Quick Actions</h4>
-                        <div className="quick-actions-grid">
-                            <button 
-                                className="quick-action"
-                                onClick={() => {
-                                    setActiveTab('daily-transactions');
-                                    setNewCashTransaction(prev => ({
-                                        ...prev,
-                                        transaction_type: 'receipt'
-                                    }));
-                                }}
-                            >
-                                <span className="icon">💰</span>
-                                <span className="label">Record Receipt</span>
-                            </button>
-                            <button 
-                                className="quick-action"
-                                onClick={() => {
-                                    setActiveTab('daily-transactions');
-                                    setNewCashTransaction(prev => ({
-                                        ...prev,
-                                        transaction_type: 'payment'
-                                    }));
-                                }}
-                            >
-                                <span className="icon">💸</span>
-                                <span className="label">Record Payment</span>
-                            </button>
-                            <button 
-                                className="quick-action"
-                                onClick={() => setActiveTab('balance-sheet')}
-                            >
-                                <span className="icon">📋</span>
-                                <span className="label">Update Balance</span>
-                            </button>
-                            <button 
-                                className="quick-action"
-                                onClick={() => setActiveTab('reports')}
-                            >
-                                <span className="icon">📈</span>
-                                <span className="label">View Reports</span>
-                            </button>
+                    <div className="card-body">
+                        <div className="flow-stats">
+                            <div className="flow-item">
+                                <span className="label">In:</span>
+                                <span className="value">{formatBDT(weeklyFlow?.in || 0)}</span>
+                            </div>
+                            <div className="flow-item">
+                                <span className="label">Out:</span>
+                                <span className="value">{formatBDT(weeklyFlow?.out || 0)}</span>
+                            </div>
+                            <div className="flow-item total">
+                                <span className="label">Net:</span>
+                                <span className={`value ${(weeklyFlow?.net || 0) >= 0 ? 'positive' : 'negative'}`}>
+                                    {formatBDT(weeklyFlow?.net || 0)}
+                                </span>
+                            </div>
                         </div>
                     </div>
                 </div>
-                
-                <div className="recent-transactions">
-                    <h4>Recent Transactions</h4>
-                    <div className="table-container">
-                        <table className="data-table">
-                            <thead>
-                                <tr>
-                                    <th>Time</th>
-                                    <th>Description</th>
-                                    <th>Type</th>
-                                    <th>Amount</th>
-                                    <th>Status</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {dailyTransactions.slice(0, 5).map(transaction => (
-                                    <tr key={transaction.id}>
-                                        <td>{transaction.time}</td>
-                                        <td>{transaction.description}</td>
-                                        <td>
-                                            <span className={`transaction-type ${transaction.transaction_type}`}>
-                                                {transaction.transaction_type}
-                                            </span>
-                                        </td>
-                                        <td>${parseFloat(transaction.amount).toFixed(2)}</td>
-                                        <td>
-                                            <span className={`status-badge ${transaction.status}`}>
-                                                {transaction.status}
-                                            </span>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
+
+                <div className="cash-card info">
+                    <div className="card-header">
+                        <h4>Monthly Flow</h4>
+                    </div>
+                    <div className="card-body">
+                        <div className="flow-stats">
+                            <div className="flow-item">
+                                <span className="label">In:</span>
+                                <span className="value">{formatBDT(monthlyFlow?.in || 0)}</span>
+                            </div>
+                            <div className="flow-item">
+                                <span className="label">Out:</span>
+                                <span className="value">{formatBDT(monthlyFlow?.out || 0)}</span>
+                            </div>
+                            <div className="flow-item total">
+                                <span className="label">Net:</span>
+                                <span className={`value ${(monthlyFlow?.net || 0) >= 0 ? 'positive' : 'negative'}`}>
+                                    {formatBDT(monthlyFlow?.net || 0)}
+                                </span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
-        );
-    };
+
+            {/* Keep the rest of your dashboard below as-is */}
+            <div className="dashboard-charts">
+                <div className="chart-section">
+                    <h4>Daily Cash Flow (Last 7 Days)</h4>
+                    <div className="cash-flow-chart">
+                        {dailySummary.slice(0, 7).reverse().map((day, index) => (
+                            <div key={index} className="chart-bar">
+                                <div className="bar-group">
+                                    <div
+                                        className="bar in"
+                                        style={{
+                                            height: `${(day.total_cash_in / Math.max(...dailySummary.map(d => d.total_cash_in))) * 80}%`
+                                        }}
+                                        title={`In: ${formatBDT(day.total_cash_in)}`}
+                                    ></div>
+                                    <div
+                                        className="bar out"
+                                        style={{
+                                            height: `${(day.total_cash_out / Math.max(...dailySummary.map(d => d.total_cash_out))) * 80}%`
+                                        }}
+                                        title={`Out: ${formatBDT(day.total_cash_out)}`}
+                                    ></div>
+                                </div>
+                                <div className="chart-label">
+                                    {new Date(day.date).toLocaleDateString('en-US', {
+                                        weekday: 'short',
+                                        timeZone: 'Asia/Dhaka'
+                                    })}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 
     const renderDailyTransactions = () => (
         <div className="daily-transactions-tab">
@@ -652,20 +616,20 @@ function Accounts() {
                         <h5>Balance Preview:</h5>
                         <div className="preview-item">
                             <span>Opening Balance:</span>
-                            <span>${parseFloat(dailyBalance.opening_balance || 0).toFixed(2)}</span>
+                            <span> {parseFloat(dailyBalance.opening_balance || 0).toFixed(2)}</span>
                         </div>
                         <div className="preview-item">
                             <span>Add: Cash Received:</span>
-                            <span className="positive">+${parseFloat(dailyBalance.cash_received || 0).toFixed(2)}</span>
+                            <span className="positive">+ {parseFloat(dailyBalance.cash_received || 0).toFixed(2)}</span>
                         </div>
                         <div className="preview-item">
                             <span>Less: Cash Paid:</span>
-                            <span className="negative">-${parseFloat(dailyBalance.cash_paid || 0).toFixed(2)}</span>
+                            <span className="negative">- {parseFloat(dailyBalance.cash_paid || 0).toFixed(2)}</span>
                         </div>
                         <div className="preview-item total">
                             <span>Closing Balance:</span>
                             <span className="total-amount">
-                                ${(parseFloat(dailyBalance.opening_balance || 0) + 
+                                BDT {(parseFloat(dailyBalance.opening_balance || 0) + 
                                    parseFloat(dailyBalance.cash_received || 0) - 
                                    parseFloat(dailyBalance.cash_paid || 0)).toFixed(2)}
                             </span>

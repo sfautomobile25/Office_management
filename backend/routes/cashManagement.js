@@ -247,52 +247,68 @@ async function getLatestClosingBalance(date) {
     }
 }
 
-// Get daily summary
+// Get daily summary (APPROVED-ONLY cash summary)
 router.get('/daily-summary', async (req, res) => {
-    try {
-        const { date, start_date, end_date } = req.query;
-        
-        let query = 'SELECT * FROM daily_summary WHERE 1=1';
-        const params = [];
-        
-        if (date) {
-            query += ' AND date = ?';
-            params.push(date);
-        }
-        
-        if (start_date && end_date) {
-            query += ' AND date BETWEEN ? AND ?';
-            params.push(start_date, end_date);
-        }
-        
-        query += ' ORDER BY date DESC LIMIT 30';
-        
-        const summaries = await allAsync(query, params);
-        
-        // Calculate period totals
-        const periodTotals = summaries.reduce((acc, s) => ({
-            total_cash_in: acc.total_cash_in + parseFloat(s.total_cash_in),
-            total_cash_out: acc.total_cash_out + parseFloat(s.total_cash_out),
-            total_bank_in: acc.total_bank_in + parseFloat(s.total_bank_in),
-            total_bank_out: acc.total_bank_out + parseFloat(s.total_bank_out),
-            net_cash_flow: acc.net_cash_flow + parseFloat(s.net_cash_flow)
-        }), {
-            total_cash_in: 0,
-            total_cash_out: 0,
-            total_bank_in: 0,
-            total_bank_out: 0,
-            net_cash_flow: 0
-        });
-        
-        res.json({
-            success: true,
-            summaries,
-            periodTotals
-        });
-    } catch (error) {
-        console.error('Error fetching daily summary:', error);
-        res.status(500).json({ success: false, error: 'Failed to fetch daily summary' });
+  try {
+    const { date, start_date, end_date } = req.query;
+
+    let query = `
+      SELECT
+        date,
+        COALESCE(opening_balance, 0) AS opening_balance,
+        COALESCE(cash_received, 0)   AS total_cash_in,
+        COALESCE(cash_paid, 0)       AS total_cash_out,
+        0                            AS total_bank_in,
+        0                            AS total_bank_out,
+        (COALESCE(cash_received, 0) - COALESCE(cash_paid, 0)) AS net_cash_flow,
+        COALESCE(closing_balance, 0) AS closing_balance
+      FROM daily_cash_balance
+      WHERE 1=1
+    `;
+
+    const params = [];
+
+    if (date) {
+      query += ' AND date = ?';
+      params.push(date);
     }
+
+    if (start_date && end_date) {
+      query += ' AND date BETWEEN ? AND ?';
+      params.push(start_date, end_date);
+    }
+
+    query += ' ORDER BY date DESC LIMIT 30';
+
+    const summaries = await allAsync(query, params);
+
+    // Calculate period totals
+    const periodTotals = summaries.reduce(
+      (acc, s) => ({
+        total_cash_in: acc.total_cash_in + Number(s.total_cash_in || 0),
+        total_cash_out: acc.total_cash_out + Number(s.total_cash_out || 0),
+        total_bank_in: acc.total_bank_in + Number(s.total_bank_in || 0),
+        total_bank_out: acc.total_bank_out + Number(s.total_bank_out || 0),
+        net_cash_flow: acc.net_cash_flow + Number(s.net_cash_flow || 0)
+      }),
+      {
+        total_cash_in: 0,
+        total_cash_out: 0,
+        total_bank_in: 0,
+        total_bank_out: 0,
+        net_cash_flow: 0
+      }
+    );
+
+    res.json({
+      success: true,
+      summaries,
+      periodTotals
+    });
+  } catch (error) {
+    console.error('Error fetching daily summary:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch daily summary' });
+  }
 });
 
 // Generate daily summary
@@ -350,69 +366,95 @@ router.post('/generate-daily-summary', async (req, res) => {
     }
 });
 
-// Get cash position overview
+// Get cash position overview (Dhaka timezone)
 router.get('/cash-position', async (req, res) => {
     try {
-        // Today's cash
-        const today = getDhakaDateString();
+        // Helper: get YYYY-MM-DD in Asia/Dhaka
+        const getDhakaISODate = (d = new Date()) => {
+            const parts = new Intl.DateTimeFormat('en-CA', {
+                timeZone: 'Asia/Dhaka',
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit'
+            }).formatToParts(d);
+
+            const y = parts.find(p => p.type === 'year')?.value;
+            const m = parts.find(p => p.type === 'month')?.value;
+            const day = parts.find(p => p.type === 'day')?.value;
+            return `${y}-${m}-${day}`;
+        };
+
+        const today = getDhakaISODate(new Date());
+
+        // Yesterday (Dhaka)
+        const todayDateObj = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Dhaka' }));
+        const yesterdayObj = new Date(todayDateObj.getTime() - 86400000);
+        const yesterday = getDhakaISODate(yesterdayObj);
+
+        // Weekly/monthly ranges (Dhaka)
+        const weekAgoObj = new Date(todayDateObj.getTime() - 7 * 86400000);
+        const monthAgoObj = new Date(todayDateObj.getTime() - 30 * 86400000);
+        const weekAgo = getDhakaISODate(weekAgoObj);
+        const monthAgo = getDhakaISODate(monthAgoObj);
+
+        // Today's cash (approved-only logic is already ensured because daily_cash_balance updates on approval)
         const todayCash = await getAsync(
             'SELECT * FROM daily_cash_balance WHERE date = ?',
             [today]
         );
-        
+
         // Yesterday's cash
-        const yesterday = getDhakaDateString(new Date(Date.now() - 86400000));
         const yesterdayCash = await getAsync(
             'SELECT * FROM daily_cash_balance WHERE date = ?',
             [yesterday]
         );
-        
+
         // Weekly cash flow
-        const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
         const weeklyFlow = await getAsync(
             `SELECT SUM(cash_received) as total_in, SUM(cash_paid) as total_out
              FROM daily_cash_balance WHERE date >= ?`,
             [weekAgo]
         );
-        
+
         // Monthly cash flow
-        const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
         const monthlyFlow = await getAsync(
             `SELECT SUM(cash_received) as total_in, SUM(cash_paid) as total_out
              FROM daily_cash_balance WHERE date >= ?`,
             [monthAgo]
         );
-        
-        // Today's transactions count
+
+        // Today's transactions count (approved only)
         const todayTransactions = await getAsync(
             `SELECT COUNT(*) as count,
                     SUM(CASE WHEN transaction_type = 'receipt' THEN amount ELSE 0 END) as receipts,
                     SUM(CASE WHEN transaction_type = 'payment' THEN amount ELSE 0 END) as payments
-             FROM cash_transactions WHERE date = ? AND status = 'approved'`,
+             FROM cash_transactions
+             WHERE date = ? AND status = 'approved'`,
             [today]
         );
-        
+
         res.json({
             success: true,
             cashPosition: {
                 today: todayCash || { closing_balance: 0 },
                 yesterday: yesterdayCash || { closing_balance: 0 },
-                dailyChange: todayCash ? 
-                    todayCash.closing_balance - (yesterdayCash ? yesterdayCash.closing_balance : 0) : 0,
+                dailyChange: todayCash
+                    ? (parseFloat(todayCash.closing_balance || 0) - parseFloat(yesterdayCash?.closing_balance || 0))
+                    : 0,
                 weeklyFlow: {
-                    in: weeklyFlow.total_in || 0,
-                    out: weeklyFlow.total_out || 0,
-                    net: (weeklyFlow.total_in || 0) - (weeklyFlow.total_out || 0)
+                    in: weeklyFlow?.total_in || 0,
+                    out: weeklyFlow?.total_out || 0,
+                    net: (weeklyFlow?.total_in || 0) - (weeklyFlow?.total_out || 0)
                 },
                 monthlyFlow: {
-                    in: monthlyFlow.total_in || 0,
-                    out: monthlyFlow.total_out || 0,
-                    net: (monthlyFlow.total_in || 0) - (monthlyFlow.total_out || 0)
+                    in: monthlyFlow?.total_in || 0,
+                    out: monthlyFlow?.total_out || 0,
+                    net: (monthlyFlow?.total_in || 0) - (monthlyFlow?.total_out || 0)
                 },
                 todayTransactions: {
-                    count: todayTransactions.count || 0,
-                    receipts: todayTransactions.receipts || 0,
-                    payments: todayTransactions.payments || 0
+                    count: todayTransactions?.count || 0,
+                    receipts: todayTransactions?.receipts || 0,
+                    payments: todayTransactions?.payments || 0
                 }
             }
         });
@@ -421,6 +463,7 @@ router.get('/cash-position', async (req, res) => {
         res.status(500).json({ success: false, error: 'Failed to fetch cash position' });
     }
 });
+
 
 // Get expense categories with spending
 router.get('/expense-analysis', async (req, res) => {
@@ -480,6 +523,35 @@ router.get('/expense-analysis', async (req, res) => {
         console.error('Error fetching expense analysis:', error);
         res.status(500).json({ success: false, error: 'Failed to fetch expense analysis' });
     }
+});
+
+router.get('/today-balance', async (req, res) => {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+
+    const row = await getAsync(
+      `SELECT date, opening_balance, cash_received, cash_paid, closing_balance
+       FROM daily_cash_balance
+       WHERE date = ?`,
+      [today]
+    );
+
+    res.json({
+      success: true,
+      date: today,
+      balance: row ? row.closing_balance : 0,
+      details: row || {
+        date: today,
+        opening_balance: 0,
+        cash_received: 0,
+        cash_paid: 0,
+        closing_balance: 0
+      }
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ success: false, error: 'Failed to load today balance' });
+  }
 });
 
 module.exports = router;

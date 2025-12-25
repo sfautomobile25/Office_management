@@ -2933,19 +2933,6 @@ input:checked + .switch-slider:before {
     position: relative;
 }
 
-.chart-bar {
-    position: absolute;
-    bottom: 0;
-    width: 30px;
-    background: linear-gradient(to top, #667eea, #764ba2);
-    border-radius: 4px 4px 0 0;
-    transition: height 0.3s ease;
-}
-
-.chart-bar:hover {
-    opacity: 0.8;
-}
-
 /* Kanban board */
 .kanban-board {
     display: flex;
@@ -4493,20 +4480,6 @@ input:checked + .switch-slider:before {
     flex-direction: column;
     align-items: center;
     height: 100%;
-}
-
-.bar-group {
-    display: flex;
-    gap: 3px;
-    height: 100%;
-    align-items: flex-end;
-    width: 40px;
-}
-
-.bar {
-    flex: 1;
-    border-radius: 4px 4px 0 0;
-    transition: height 0.3s;
 }
 
 .bar.in {
