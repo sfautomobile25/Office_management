@@ -133,7 +133,14 @@ export const cashManagementAPI = {
     getCashPosition: () => API.get('/cash/cash-position'),
     
     // Expense Analysis
-    getExpenseAnalysis: (params) => API.get('/cash/expense-analysis', { params })
+    getExpenseAnalysis: (params) => API.get('/cash/expense-analysis', { params }),
+
+    downloadDailyReport: (params) =>
+    API.get('/cash/daily-report/export', {
+    params,
+    responseType: 'blob'
+  }),
+
 };
 
 // System API

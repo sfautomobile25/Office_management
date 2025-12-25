@@ -2,6 +2,22 @@ import React, { useState, useEffect } from 'react';
 import { accountsAPI, cashManagementAPI } from '../../services/api';
 
 function Accounts() {
+
+    const getDhakaTodayISO = () => {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Dhaka',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).formatToParts(new Date());
+
+    const y = parts.find(p => p.type === 'year')?.value;
+    const m = parts.find(p => p.type === 'month')?.value;
+    const d = parts.find(p => p.type === 'day')?.value;
+    return `${y}-${m}-${d}`;
+    };
+
+
     const [activeTab, setActiveTab] = useState('dashboard');
     const [loading, setLoading] = useState(false);
     
@@ -22,97 +38,125 @@ function Accounts() {
     const [ledgerMonth, setLedgerMonth] = useState(new Date().getMonth() + 1); // 1-12
     const [ledgerQuarter, setLedgerQuarter] = useState(1); // 1-4
     const [ledgerDownloading, setLedgerDownloading] = useState(false);
+    const [reportDate, setReportDate] = useState(getDhakaTodayISO());
+    const [reportLoading, setReportLoading] = useState(false);
 
 
     // Form states
-const [newCashTransaction, setNewCashTransaction] = useState({
-        date: new Date().toISOString().split('T')[0],
-        time: new Date().toTimeString().split(' ')[0].substring(0, 5),
-        description: '',
-        amount: '',
-        transaction_type: 'receipt',
-        category: '',
-        payment_method: 'cash',
-        reference_number: '',
-        received_from: '',
-        paid_to: '',
-        notes: ''
-});
-    
-const [dailyBalance, setDailyBalance] = useState({
-        date: new Date().toISOString().split('T')[0],
-        opening_balance: '',
-        cash_received: '',
-        cash_paid: ''
-});
-
-useEffect(() => {
-        fetchData();
-}, [activeTab]);
-
-const loadExpenseAnalysis = async (period = expensePeriod) => {
-  try {
-    const res = await cashManagementAPI.getExpenseAnalysis({ period });
-    if (res.data?.success) setExpenseAnalysis(res.data);
-  } catch (err) {
-    console.error('Error fetching expense analysis:', err);
-  }
-};
-
-const downloadLedgerExcel = async () => {
-  try {
-    setLedgerDownloading(true);
-
-    const params =
-      ledgerPeriod === 'monthly'
-        ? { period: 'monthly', year: ledgerYear, month: ledgerMonth }
-        : ledgerPeriod === 'quarterly'
-        ? { period: 'quarterly', year: ledgerYear, quarter: ledgerQuarter }
-        : { period: 'yearly', year: ledgerYear };
-
-    const res = await accountsAPI.downloadLedger(params);
-
-    const blob = new Blob([res.data], {
-      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    const [newCashTransaction, setNewCashTransaction] = useState({
+            date: new Date().toISOString().split('T')[0],
+            time: new Date().toTimeString().split(' ')[0].substring(0, 5),
+            description: '',
+            amount: '',
+            transaction_type: 'receipt',
+            category: '',
+            payment_method: 'cash',
+            reference_number: '',
+            received_from: '',
+            paid_to: '',
+            notes: ''
+    });
+        
+    const [dailyBalance, setDailyBalance] = useState({
+            date: new Date().toISOString().split('T')[0],
+            opening_balance: '',
+            cash_received: '',
+            cash_paid: ''
     });
 
-    const tag =
-      ledgerPeriod === 'monthly'
-        ? `${ledgerYear}-${String(ledgerMonth).padStart(2, '0')}`
-        : ledgerPeriod === 'quarterly'
-        ? `${ledgerYear}-Q${ledgerQuarter}`
-        : `${ledgerYear}`;
+    useEffect(() => {
+            fetchData();
+    }, [activeTab]);
 
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `ledger-${tag}.xlsx`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    window.URL.revokeObjectURL(url);
-  } catch (e) {
-    alert(e.response?.data?.error || 'Ledger download failed');
-  } finally {
-    setLedgerDownloading(false);
-  }
-};
+    const generateDailyReport = async () => {
+    try {
+        setReportLoading(true);
+        const res = await cashManagementAPI.downloadDailyReport({ date: reportDate });
 
+        const blob = new Blob([res.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        });
 
-const getDhakaDateString = (date = new Date()) => {
-  // Always format date as YYYY-MM-DD in Asia/Dhaka
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Dhaka',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).formatToParts(date);
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `daily-report-${reportDate}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
 
-  const y = parts.find(p => p.type === 'year')?.value;
-  const m = parts.find(p => p.type === 'month')?.value;
-  const d = parts.find(p => p.type === 'day')?.value;
-  return `${y}-${m}-${d}`;
-};
+        // your existing message/toast can stay:
+        // setMessage('Report generated and downloaded');
+    } catch (e) {
+        alert(e.response?.data?.error || 'Failed to generate report');
+    } finally {
+        setReportLoading(false);
+    }
+    };
+
+    const loadExpenseAnalysis = async (period = expensePeriod) => {
+    try {
+        const res = await cashManagementAPI.getExpenseAnalysis({ period });
+        if (res.data?.success) setExpenseAnalysis(res.data);
+    } catch (err) {
+        console.error('Error fetching expense analysis:', err);
+    }
+    };
+
+    const downloadLedgerExcel = async () => {
+    try {
+        setLedgerDownloading(true);
+
+        const params =
+        ledgerPeriod === 'monthly'
+            ? { period: 'monthly', year: ledgerYear, month: ledgerMonth }
+            : ledgerPeriod === 'quarterly'
+            ? { period: 'quarterly', year: ledgerYear, quarter: ledgerQuarter }
+            : { period: 'yearly', year: ledgerYear };
+
+        const res = await accountsAPI.downloadLedger(params);
+
+        const blob = new Blob([res.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        });
+
+        const tag =
+        ledgerPeriod === 'monthly'
+            ? `${ledgerYear}-${String(ledgerMonth).padStart(2, '0')}`
+            : ledgerPeriod === 'quarterly'
+            ? `${ledgerYear}-Q${ledgerQuarter}`
+            : `${ledgerYear}`;
+
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `ledger-${tag}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+    } catch (e) {
+        alert(e.response?.data?.error || 'Ledger download failed');
+    } finally {
+        setLedgerDownloading(false);
+    }
+    };
+
+    const getDhakaDateString = (date = new Date()) => {
+    // Always format date as YYYY-MM-DD in Asia/Dhaka
+    const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Dhaka',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).formatToParts(date);
+
+    const y = parts.find(p => p.type === 'year')?.value;
+    const m = parts.find(p => p.type === 'month')?.value;
+    const d = parts.find(p => p.type === 'day')?.value;
+    return `${y}-${m}-${d}`;
+    };
 
 const fetchData = async () => {
   setLoading(true);
@@ -188,21 +232,6 @@ const updateDailyBalance = async () => {
         }
 };
 
-const generateDailyReport = async () => {
-        try {
-            const response = await cashManagementAPI.generateDailySummary({
-                date: new Date().toISOString().split('T')[0]
-            });
-            if (response.data.success) {
-                alert('Daily report generated!');
-                fetchData();
-            }
-        } catch (error) {
-            console.error('Error generating report:', error);
-            alert('Failed to generate report');
-        }
-};
-
 const loadRecentDailyBalances = async () => {
   try {
     setRecentBalancesError('');
@@ -234,7 +263,6 @@ const loadRecentDailyBalances = async () => {
     setRecentBalancesLoading(false);
   }
 };
-
 
 const renderDashboard = () => {
     if (!cashPosition) return null;
@@ -268,9 +296,9 @@ const renderDashboard = () => {
             <div className="dashboard-header">
                 <h3>📊 Cash Flow Dashboard</h3>
                 <div className="dashboard-actions">
-                    <button className="btn-primary" onClick={generateDailyReport}>
-                        Generate Daily Report
-                    </button>
+                      <button className="btn-primary" onClick={generateDailyReport} disabled={reportLoading}>
+                            {reportLoading ? 'Generating...' : 'Generate Daily Report'}
+                        </button>
                     <button className="btn-secondary" onClick={() => setActiveTab('daily-transactions')}>
                         Record Transaction
                     </button>
@@ -402,7 +430,6 @@ const renderDashboard = () => {
         </div>
     );
 };
-
 
 const renderDailyTransactions = () => (
         <div className="daily-transactions-tab">
@@ -1034,12 +1061,6 @@ const renderExpenseAnalysis = () => {
                         onClick={() => setActiveTab('daily-transactions')}
                     >
                         + Quick Transaction
-                    </button>
-                    <button 
-                        className="btn-secondary"
-                        onClick={generateDailyReport}
-                    >
-                        📋 Daily Report
                     </button>
                 </div>
             </div>
