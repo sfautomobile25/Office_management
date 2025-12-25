@@ -5001,4 +5001,96 @@ input:checked + .switch-slider:before {
   );
   backdrop-filter: blur(6px);
 }
+/* Expense Analysis Improvements */
+.expense-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.expense-controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.expense-controls select {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  background: white;
+}
+
+.usage-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.usage-track {
+  width: 100%;
+  height: 10px;
+  background: #edf2f7;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.usage-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #667eea, #764ba2);
+  border-radius: 999px;
+}
+
+.usage-text {
+  min-width: 52px;
+  text-align: right;
+  color: #4a5568;
+  font-size: 0.9rem;
+}
+
+.percentage-ui {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.percentage-track {
+  width: 120px;
+  height: 8px;
+  background: #edf2f7;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.percentage-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #667eea, #764ba2);
+  border-radius: 999px;
+}
+
+.percentage-text {
+  min-width: 52px;
+  text-align: right;
+  color: #4a5568;
+  font-size: 0.9rem;
+}
+
+/* Make tables usable on mobile */
+@media (max-width: 768px) {
+  .percentage-track {
+    width: 90px;
+  }
+
+  .table-container {
+    overflow-x: auto;
+  }
+
+  .data-table {
+    min-width: 720px; /* lets user scroll horizontally on small screens */
+  }
+}
+
 

@@ -13,6 +13,11 @@ function Accounts() {
     const [recentBalances, setRecentBalances] = useState([]);
     const [recentBalancesLoading, setRecentBalancesLoading] = useState(false);
     const [recentBalancesError, setRecentBalancesError] = useState('');
+        // Expense analysis UI states
+        const [expensePeriod, setExpensePeriod] = useState('month');
+        const [expenseLoading, setExpenseLoading] = useState(false);
+        const [expenseError, setExpenseError] = useState('');
+
 
     
     // Form states
@@ -41,39 +46,64 @@ function Accounts() {
         fetchData();
     }, [activeTab]);
 
-    const fetchData = async () => {
-        setLoading(true);
-        try {
-            if (activeTab === 'dashboard') {
-                const [positionRes, summaryRes] = await Promise.all([
-                    cashManagementAPI.getCashPosition(),
-                    cashManagementAPI.getDailySummary({ limit: 7 })
-                ]);
-                
-                if (positionRes.data.success) setCashPosition(positionRes.data.cashPosition);
-                if (summaryRes.data.success) setDailySummary(summaryRes.data.summaries);
-            }
-            
-            if (activeTab === 'daily-transactions') {
-                const today = new Date().toISOString().split('T')[0];
-                const transactionsRes = await cashManagementAPI.getCashTransactions({ date: today });
-                if (transactionsRes.data.success) {
-                    setDailyTransactions(transactionsRes.data.transactions);
-                }
-            }
-            
-            if (activeTab === 'expenses') {
-                const analysisRes = await cashManagementAPI.getExpenseAnalysis({ period: 'month' });
-                if (analysisRes.data.success) {
-                    setExpenseAnalysis(analysisRes.data);
-                }
-            }
-        } catch (error) {
-            console.error('Error fetching data:', error);
-        } finally {
-            setLoading(false);
-        }
-    };
+const loadExpenseAnalysis = async (period = expensePeriod) => {
+  try {
+    const res = await cashManagementAPI.getExpenseAnalysis({ period });
+    if (res.data?.success) setExpenseAnalysis(res.data);
+  } catch (err) {
+    console.error('Error fetching expense analysis:', err);
+  }
+};
+
+    const getDhakaDateString = (date = new Date()) => {
+  // Always format date as YYYY-MM-DD in Asia/Dhaka
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Dhaka',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(date);
+
+  const y = parts.find(p => p.type === 'year')?.value;
+  const m = parts.find(p => p.type === 'month')?.value;
+  const d = parts.find(p => p.type === 'day')?.value;
+  return `${y}-${m}-${d}`;
+};
+
+
+const fetchData = async () => {
+  setLoading(true);
+  try {
+    if (activeTab === 'dashboard') {
+      const [positionRes, summaryRes] = await Promise.all([
+        cashManagementAPI.getCashPosition(),
+        cashManagementAPI.getDailySummary({ limit: 7 })
+      ]);
+
+      if (positionRes.data?.success) setCashPosition(positionRes.data.cashPosition);
+      if (summaryRes.data?.success) setDailySummary(summaryRes.data.summaries);
+    }
+
+    if (activeTab === 'daily-transactions') {
+      const today = getDhakaDateString(); // ✅ Dhaka date
+      const transactionsRes = await cashManagementAPI.getCashTransactions({ date: today });
+      if (transactionsRes.data?.success) {
+        setDailyTransactions(transactionsRes.data.transactions || []);
+      } else {
+        setDailyTransactions([]);
+      }
+    }
+
+    if (activeTab === 'expenses') {
+      // ✅ loads whatever period user selected
+      await loadExpenseAnalysis(expensePeriod);
+    }
+  } catch (error) {
+    console.error('Error fetching data:', error);
+  } finally {
+    setLoading(false);
+  }
+};
 
     const handleCashTransaction = async (e) => {
         e.preventDefault();
@@ -129,21 +159,6 @@ function Accounts() {
             alert('Failed to generate report');
         }
     };
-
-    const getDhakaDateString = (date = new Date()) => {
-  // Always format date as YYYY-MM-DD in Asia/Dhaka
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Dhaka',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).formatToParts(date);
-
-  const y = parts.find(p => p.type === 'year')?.value;
-  const m = parts.find(p => p.type === 'month')?.value;
-  const d = parts.find(p => p.type === 'day')?.value;
-  return `${y}-${m}-${d}`;
-};
 
 const loadRecentDailyBalances = async () => {
   try {
@@ -757,98 +772,165 @@ const renderDashboard = () => {
         </div>
     );
 
-    const renderExpenseAnalysis = () => {
-        if (!expenseAnalysis) return null;
-        
-        return (
-            <div className="expense-analysis-tab">
-                <div className="page-header">
-                    <h3>📊 Expense Analysis</h3>
-                    <div className="period-selector">
-                        <select onChange={(e) => {
-                            // Fetch data for selected period
-                        }}>
-                            <option value="month">This Month</option>
-                            <option value="week">This Week</option>
-                            <option value="year">This Year</option>
-                        </select>
-                    </div>
+const renderExpenseAnalysis = () => {
+    // Allow UI to render even if null (so we can show loading/error nicely)
+    const totals = expenseAnalysis?.totals || { budget: 0, spent: 0, count: 0 };
+    const varianceValue = typeof expenseAnalysis?.variance === 'number'
+        ? expenseAnalysis.variance
+        : (parseFloat(totals.budget || 0) - parseFloat(totals.spent || 0));
+
+    const budget = parseFloat(totals.budget || 0);
+    const spent = parseFloat(totals.spent || 0);
+    const usagePct = budget > 0 ? (spent / budget) * 100 : 0;
+
+    return (
+        <div className="expense-analysis-tab">
+            <div className="page-header expense-header">
+                <h3>📊 Expense Analysis</h3>
+
+                <div className="expense-controls">
+                    <select
+                        value={expensePeriod}
+                        onChange={(e) => {
+                            const p = e.target.value;
+                            setExpensePeriod(p);
+                            loadExpenseAnalysis(p);
+                        }}
+                    >
+                        <option value="day">Today</option>
+                        <option value="week">This Week</option>
+                        <option value="month">This Month</option>
+                        <option value="year">This Year</option>
+                    </select>
+
+                    <button
+                        className="btn-secondary"
+                        onClick={() => loadExpenseAnalysis(expensePeriod)}
+                        disabled={expenseLoading}
+                    >
+                        {expenseLoading ? 'Refreshing...' : 'Refresh'}
+                    </button>
                 </div>
-                
-                <div className="expense-overview">
-                    <div className="overview-card">
-                        <h4>Budget vs Actual</h4>
-                        <div className="overview-stats">
-                            <div className="stat-item">
-                                <span className="label">Budget:</span>
-                                <span className="value">${parseFloat(expenseAnalysis.totals.budget).toFixed(2)}</span>
-                            </div>
-                            <div className="stat-item">
-                                <span className="label">Actual Spent:</span>
-                                <span className="value">${parseFloat(expenseAnalysis.totals.spent).toFixed(2)}</span>
-                            </div>
-                            <div className="stat-item">
-                                <span className="label">Variance:</span>
-                                <span className={`value ${expenseAnalysis.variance >= 0 ? 'positive' : 'negative'}`}>
-                                    ${Math.abs(expenseAnalysis.variance).toFixed(2)} 
-                                    {expenseAnalysis.variance >= 0 ? ' under' : ' over'}
-                                </span>
+            </div>
+
+            {expenseError && (
+                <div className="error-message" style={{ marginTop: 12 }}>
+                    {expenseError}
+                </div>
+            )}
+
+            <div className="expense-overview">
+                <div className="overview-card">
+                    <h4>Budget vs Actual</h4>
+
+                    <div className="overview-stats">
+                        <div className="stat-item">
+                            <span className="label">Budget</span>
+                            <span className="value">৳ {budget.toFixed(2)}</span>
+                        </div>
+
+                        <div className="stat-item">
+                            <span className="label">Spent</span>
+                            <span className="value">৳ {spent.toFixed(2)}</span>
+                        </div>
+
+                        <div className="stat-item">
+                            <span className="label">Variance</span>
+                            <span className={`value variance ${varianceValue >= 0 ? 'positive' : 'negative'}`}>
+                                ৳ {Math.abs(varianceValue).toFixed(2)} {varianceValue >= 0 ? 'under' : 'over'}
+                            </span>
+                        </div>
+
+                        <div className="stat-item">
+                            <span className="label">Usage</span>
+                            <div className="usage-row">
+                                <div className="usage-track">
+                                    <div
+                                        className="usage-fill"
+                                        style={{ width: `${Math.min(usagePct, 100)}%` }}
+                                    />
+                                </div>
+                                <span className="usage-text">{usagePct.toFixed(1)}%</span>
                             </div>
                         </div>
                     </div>
-                </div>
-                
-                <div className="expense-breakdown">
-                    <h4>Expense Breakdown by Category</h4>
-                    <div className="table-container">
-                        <table className="data-table">
-                            <thead>
-                                <tr>
-                                    <th>Category</th>
-                                    <th>Budget</th>
-                                    <th>Actual</th>
-                                    <th>Variance</th>
-                                    <th>% of Total</th>
-                                    <th>Transactions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {expenseAnalysis.expenses.map((expense, index) => {
-                                    const variance = parseFloat(expense.budget_amount) - parseFloat(expense.actual_spent);
-                                    const percent = (parseFloat(expense.actual_spent) / expenseAnalysis.totals.spent) * 100;
-                                    
-                                    return (
-                                        <tr key={index}>
-                                            <td>{expense.category_name}</td>
-                                            <td>${parseFloat(expense.budget_amount).toFixed(2)}</td>
-                                            <td>${parseFloat(expense.actual_spent).toFixed(2)}</td>
-                                            <td>
-                                                <span className={`variance ${variance >= 0 ? 'positive' : 'negative'}`}>
-                                                    ${Math.abs(variance).toFixed(2)}
-                                                    {variance >= 0 ? ' under' : ' over'}
-                                                </span>
-                                            </td>
-                                            <td>
-                                                <div className="percentage-bar">
-                                                    <div 
-                                                        className="bar-fill"
-                                                        style={{ width: `${Math.min(percent, 100)}%` }}
-                                                    />
-                                                    <span>{percent.toFixed(1)}%</span>
-                                                </div>
-                                            </td>
-                                            <td>{expense.transaction_count}</td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
+
+                    <div className="text-muted" style={{ marginTop: 10 }}>
+                        Approved payments are counted (based on backend expense analysis).
                     </div>
                 </div>
             </div>
-        );
-    };
 
+            <div className="expense-breakdown">
+                <div className="table-container">
+                    <table className="data-table">
+                        <thead>
+                            <tr>
+                                <th>Category</th>
+                                <th>Budget</th>
+                                <th>Actual</th>
+                                <th>Variance</th>
+                                <th>% of Total</th>
+                                <th>Transactions</th>
+                            </tr>
+                        </thead>
+
+                        <tbody>
+                            {expenseLoading && !expenseAnalysis && (
+                                <tr>
+                                    <td colSpan="6" className="text-center">
+                                        Loading expense analysis...
+                                    </td>
+                                </tr>
+                            )}
+
+                            {!expenseLoading && expenseAnalysis?.expenses?.length === 0 && (
+                                <tr>
+                                    <td colSpan="6" className="text-center">
+                                        No expense data found for this period.
+                                    </td>
+                                </tr>
+                            )}
+
+                            {expenseAnalysis?.expenses?.map((expense, index) => {
+                                const b = parseFloat(expense.budget_amount || 0);
+                                const a = parseFloat(expense.actual_spent || 0);
+                                const variance = b - a;
+
+                                const percent = spent > 0 ? (a / spent) * 100 : 0;
+
+                                return (
+                                    <tr key={index}>
+                                        <td>{expense.category_name}</td>
+                                        <td>৳ {b.toFixed(2)}</td>
+                                        <td>৳ {a.toFixed(2)}</td>
+                                        <td>
+                                            <span className={`variance ${variance >= 0 ? 'positive' : 'negative'}`}>
+                                                ৳ {Math.abs(variance).toFixed(2)} {variance >= 0 ? 'under' : 'over'}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <div className="percentage-ui">
+                                                <div className="percentage-track">
+                                                    <div
+                                                        className="percentage-fill"
+                                                        style={{ width: `${Math.min(percent, 100)}%` }}
+                                                    />
+                                                </div>
+                                                <span className="percentage-text">{percent.toFixed(1)}%</span>
+                                            </div>
+                                        </td>
+                                        <td>{expense.transaction_count}</td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    );
+};
     return (
         <div className="accounts-management">
             <div className="page-header">
@@ -922,5 +1004,4 @@ const renderDashboard = () => {
         </div>
     );
 }
-
 export default Accounts;

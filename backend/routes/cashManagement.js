@@ -186,54 +186,6 @@ router.post('/cash-transactions', async (req, res) => {
     }
 });
 
-// Update daily cash balance helper
-// async function updateDailyCashBalance(date, type, amount) {
-//     try {
-//         const today = await getAsync('SELECT * FROM daily_cash_balance WHERE date = ?', [date]);
-        
-//         if (today) {
-//             if (type === 'receipt') {
-//                 await runAsync(
-//                     `UPDATE daily_cash_balance 
-//                      SET cash_received = cash_received + ?, 
-//                          closing_balance = closing_balance + ?
-//                      WHERE date = ?`,
-//                     [amount, amount, date]
-//                 );
-//             } else if (type === 'payment') {
-//                 await runAsync(
-//                     `UPDATE daily_cash_balance 
-//                      SET cash_paid = cash_paid + ?, 
-//                          closing_balance = closing_balance - ?
-//                      WHERE date = ?`,
-//                     [amount, amount, date]
-//                 );
-//             }
-//         } else {
-//             // Create new entry for the day
-//             const opening = await getLatestClosingBalance(date);
-            
-//             if (type === 'receipt') {
-//                 await runAsync(
-//                     `INSERT INTO daily_cash_balance 
-//                      (date, opening_balance, cash_received, cash_paid, closing_balance)
-//                      VALUES (?, ?, ?, ?, ?)`,
-//                     [date, opening, amount, 0, parseFloat(opening) + parseFloat(amount)]
-//                 );
-//             } else if (type === 'payment') {
-//                 await runAsync(
-//                     `INSERT INTO daily_cash_balance 
-//                      (date, opening_balance, cash_received, cash_paid, closing_balance)
-//                      VALUES (?, ?, ?, ?, ?)`,
-//                     [date, opening, 0, amount, parseFloat(opening) - parseFloat(amount)]
-//                 );
-//             }
-//         }
-//     } catch (error) {
-//         console.error('Error updating daily cash balance:', error);
-//     }
-// }
-
 // Get latest closing balance
 async function getLatestClosingBalance(date) {
     try {
@@ -383,9 +335,7 @@ router.get('/cash-position', async (req, res) => {
             const day = parts.find(p => p.type === 'day')?.value;
             return `${y}-${m}-${day}`;
         };
-
         const today = getDhakaISODate(new Date());
-
         // Yesterday (Dhaka)
         const todayDateObj = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Dhaka' }));
         const yesterdayObj = new Date(todayDateObj.getTime() - 86400000);
@@ -432,7 +382,6 @@ router.get('/cash-position', async (req, res) => {
              WHERE date = ? AND status = 'approved'`,
             [today]
         );
-
         res.json({
             success: true,
             cashPosition: {
@@ -463,8 +412,6 @@ router.get('/cash-position', async (req, res) => {
         res.status(500).json({ success: false, error: 'Failed to fetch cash position' });
     }
 });
-
-
 // Get expense categories with spending
 router.get('/expense-analysis', async (req, res) => {
     try {
