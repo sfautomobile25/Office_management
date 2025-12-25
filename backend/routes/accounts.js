@@ -609,7 +609,7 @@ router.get('/ledger/export', checkAccountsPermission('reports'), async (req, res
 
       ws.addRow([`Ledger: ${acc.account_number} - ${acc.account_name}`]);
       ws.addRow([`Period: ${start} to ${end} (${period})`]);
-      ws.addRow([`Currency: ${acc.currency || 'BDT'}`]);
+      ws.addRow([`Currency: BDT`]);
       ws.addRow([]);
 
       ws.columns = [
@@ -676,7 +676,7 @@ router.get('/ledger/export', checkAccountsPermission('reports'), async (req, res
         account_number: acc.account_number,
         account_name: acc.account_name,
         account_type: acc.account_type,
-        currency: acc.currency || 'BDT',
+        currency: 'BDT',
         opening,
         debit: totalDebit,
         credit: totalCredit,

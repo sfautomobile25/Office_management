@@ -5093,4 +5093,17 @@ input:checked + .switch-slider:before {
   }
 }
 
+.ledger-export-controls {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.ledger-export-controls select,
+.ledger-export-controls input {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(0,0,0,0.12);
+}
 
