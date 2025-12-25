@@ -5107,3 +5107,94 @@ input:checked + .switch-slider:before {
   border: 1px solid rgba(0,0,0,0.12);
 }
 
+.ledger-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ledger-controls .ledger-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(140px, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+
+.ledger-controls label {
+  display: block;
+  margin-bottom: 6px;
+  opacity: 0.85;
+}
+
+.ledger-controls select,
+.ledger-controls input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(0,0,0,0.12);
+}
+
+.ledger-range {
+  margin-top: 10px;
+  opacity: 0.85;
+}
+
+.ledger-summary {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.ledger-table {
+  overflow-x: auto;
+}
+
+.ledger-cards {
+  display: none;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.ledger-card {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 16px;
+  padding: 14px;
+}
+
+.ledger-card-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.ledger-card-title { font-weight: 700; }
+.ledger-card-date { opacity: 0.8; }
+
+.ledger-card-desc { margin-bottom: 10px; opacity: 0.95; }
+
+.ledger-card-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+}
+
+.ledger-card-grid .k {
+  opacity: 0.75;
+  margin-right: 6px;
+}
+
+@media (max-width: 900px) {
+  .ledger-controls .ledger-grid {
+    grid-template-columns: repeat(2, minmax(140px, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .ledger-table { display: none; }
+  .ledger-cards { display: grid; }
+}
+
+

@@ -24,6 +24,8 @@ import Register from './components/Register';
 import ForgotPassword from './components/ForgotPassword';
 import Accounts from './components/admin/Accounts';
 import CashApproval from './components/admin/CashApproval';
+import Ledger from './components/admin/Ledger';
+
 
 
 import './App.css';
@@ -141,7 +143,9 @@ function App() {
                                         <Route path="currency" element={<CurrencyConverter />} />
                                         <Route path="" element={<Navigate to="dashboard" replace />} />
                                         <Route path="accounts" element={<Accounts />} />  
-                                        <Route path="cash-approval" element={<CashApproval />} />                             
+                                        <Route path="cash-approval" element={<CashApproval />} />
+                                        <Route path="ledger" element={<Ledger />} />
+                             
                                     </Routes>
                                 </Layout>
                             ) : (

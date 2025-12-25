@@ -712,4 +712,99 @@ router.get('/ledger/export', checkAccountsPermission('reports'), async (req, res
   }
 });
 
+// GET /api/accounts/ledger?account_id=1&start_date=YYYY-MM-DD&end_date=YYYY-MM-DD
+router.get('/ledger', checkAccountsPermission('reports'), async (req, res) => {
+  try {
+    const account_id = Number(req.query.account_id);
+    const start_date = (req.query.start_date || '').trim();
+    const end_date = (req.query.end_date || '').trim();
+
+    if (!account_id) {
+      return res.status(400).json({ success: false, error: 'account_id is required' });
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(start_date) || !/^\d{4}-\d{2}-\d{2}$/.test(end_date)) {
+      return res.status(400).json({ success: false, error: 'start_date and end_date must be YYYY-MM-DD' });
+    }
+
+    const acc = await getAsync(
+      `SELECT id, account_number, account_name, account_type, currency
+       FROM accounts
+       WHERE id = ?`,
+      [account_id]
+    );
+    if (!acc) return res.status(404).json({ success: false, error: 'Account not found' });
+
+    // Opening = sum(debit-credit) before start_date (posted only)
+    const openingRow = await getAsync(
+      `
+      SELECT
+        COALESCE(SUM(jel.debit), 0) AS d,
+        COALESCE(SUM(jel.credit), 0) AS c
+      FROM journal_entry_lines jel
+      JOIN journal_entries je ON je.id = jel.journal_entry_id
+      WHERE jel.account_id = ?
+        AND je.status = 'posted'
+        AND je.date < ?
+      `,
+      [account_id, start_date]
+    );
+    const opening_balance = Number(openingRow?.d || 0) - Number(openingRow?.c || 0);
+
+    // Lines in range
+    const lines = await allAsync(
+      `
+      SELECT
+        je.id AS journal_entry_id,
+        je.date,
+        je.entry_number,
+        je.description AS entry_description,
+        je.posted_at,
+        jel.description AS line_description,
+        jel.debit,
+        jel.credit,
+        jel.line_number
+      FROM journal_entry_lines jel
+      JOIN journal_entries je ON je.id = jel.journal_entry_id
+      WHERE jel.account_id = ?
+        AND je.status = 'posted'
+        AND je.date >= ?
+        AND je.date <= ?
+      ORDER BY je.date ASC, je.id ASC, jel.line_number ASC
+      `,
+      [account_id, start_date, end_date]
+    );
+
+    let running = opening_balance;
+    const formatted = lines.map((r) => {
+      const d = Number(r.debit || 0);
+      const c = Number(r.credit || 0);
+      running += (d - c);
+      return {
+        journal_entry_id: r.journal_entry_id,
+        date: r.date,
+        entry_number: r.entry_number,
+        posted_at: r.posted_at,
+        description: (r.line_description || r.entry_description || '').trim(),
+        debit: d,
+        credit: c,
+        running_balance: running
+      };
+    });
+
+    res.json({
+      success: true,
+      account: acc,
+      start_date,
+      end_date,
+      opening_balance,
+      closing_balance: running,
+      lines: formatted
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ success: false, error: 'Failed to load ledger' });
+  }
+});
+
+
 module.exports = router;

@@ -6,6 +6,7 @@ function Sidebar({ isOpen, user }) {
         { path: '/admin/dashboard', label: 'Dashboard', icon: '📊' },
         { path: '/admin/accounts', label: 'Accounts Management', icon: '💰' },
         { path: '/admin/cash-approval', label: 'Cash Approval', icon: '✅' },
+        { path: '/admin/ledger', label: 'General Ledger', icon: '📒' },
         { path: '/admin/users', label: 'User Management', icon: '👥' },
         { path: '/admin/permissions', label: 'Permission Settings', icon: '🔐' },
         { path: '/admin/config', label: 'System Configuration', icon: '⚙️' },
