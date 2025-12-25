@@ -162,13 +162,34 @@ const fetchData = async () => {
   setLoading(true);
   try {
     if (activeTab === 'dashboard') {
-      const [positionRes, summaryRes] = await Promise.all([
+            const [positionRes, summaryRes] = await Promise.all([
         cashManagementAPI.getCashPosition(),
         cashManagementAPI.getDailySummary({ limit: 7 })
-      ]);
+        ]);
 
-      if (positionRes.data?.success) setCashPosition(positionRes.data.cashPosition);
-      if (summaryRes.data?.success) setDailySummary(summaryRes.data.summaries);
+        if (positionRes.data?.success) setCashPosition(positionRes.data.cashPosition);
+
+        if (summaryRes.data?.success) {
+        const summaries = summaryRes.data.summaries || [];
+
+        // ✅ Auto-generate if empty
+        if (summaries.length === 0) {
+            try {
+            await cashManagementAPI.generateDailySummary(); // creates today's (or latest) summary in DB
+            const refreshed = await cashManagementAPI.getDailySummary({ limit: 7 });
+            if (refreshed.data?.success) setDailySummary(refreshed.data.summaries || []);
+            else setDailySummary([]);
+            } catch (e) {
+            console.error('Auto-generate daily summary failed:', e);
+            setDailySummary([]);
+            }
+        } else {
+            setDailySummary(summaries);
+        }
+        } else {
+        setDailySummary([]);
+        }
+
     }
 
     if (activeTab === 'daily-transactions') {
@@ -397,34 +418,40 @@ const renderDashboard = () => {
             <div className="dashboard-charts">
                 <div className="chart-section">
                     <h4>Daily Cash Flow (Last 7 Days)</h4>
-                    <div className="cash-flow-chart">
-                        {dailySummary.slice(0, 7).reverse().map((day, index) => (
-                            <div key={index} className="chart-bar">
+                        <div className="cash-flow-chart">
+                        {(() => {
+                            const last7 = (dailySummary || []).slice(0, 7).reverse();
+
+                            const maxIn = Math.max(1, ...last7.map(d => Number(d.total_cash_in || 0)));
+                            const maxOut = Math.max(1, ...last7.map(d => Number(d.total_cash_out || 0)));
+
+                            return last7.map((day, index) => {
+                            const cashIn = Number(day.total_cash_in || 0);
+                            const cashOut = Number(day.total_cash_out || 0);
+
+                            return (
+                                <div key={index} className="chart-bar">
                                 <div className="bar-group">
                                     <div
-                                        className="bar in"
-                                        style={{
-                                            height: `${(day.total_cash_in / Math.max(...dailySummary.map(d => d.total_cash_in))) * 80}%`
-                                        }}
-                                        title={`In: ${formatBDT(day.total_cash_in)}`}
-                                    ></div>
+                                    className="bar in"
+                                    style={{ height: `${(cashIn / maxIn) * 80}%` }}
+                                    title={`In: ৳${cashIn.toFixed(2)}`}
+                                    />
                                     <div
-                                        className="bar out"
-                                        style={{
-                                            height: `${(day.total_cash_out / Math.max(...dailySummary.map(d => d.total_cash_out))) * 80}%`
-                                        }}
-                                        title={`Out: ${formatBDT(day.total_cash_out)}`}
-                                    ></div>
+                                    className="bar out"
+                                    style={{ height: `${(cashOut / maxOut) * 80}%` }}
+                                    title={`Out: ৳${cashOut.toFixed(2)}`}
+                                    />
                                 </div>
+
                                 <div className="chart-label">
-                                    {new Date(day.date).toLocaleDateString('en-US', {
-                                        weekday: 'short',
-                                        timeZone: 'Asia/Dhaka'
-                                    })}
+                                    {new Date(day.date).toLocaleDateString('en-US', { weekday: 'short' })}
                                 </div>
-                            </div>
-                        ))}
-                    </div>
+                                </div>
+                            );
+                            });
+                        })()}
+                        </div>
                 </div>
             </div>
         </div>

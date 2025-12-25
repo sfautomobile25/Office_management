@@ -128,6 +128,8 @@ export const cashManagementAPI = {
     // Daily Summary
     getDailySummary: (params) => API.get('/cash/daily-summary', { params }),
     generateDailySummary: (data) => API.post('/cash/generate-daily-summary', data),
+    // generateDailySummary: () => API.post('/cash/generate-daily-summary'),
+
     
     // Cash Position
     getCashPosition: () => API.get('/cash/cash-position'),
