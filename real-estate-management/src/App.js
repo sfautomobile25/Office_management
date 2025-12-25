@@ -25,6 +25,9 @@ import ForgotPassword from './components/ForgotPassword';
 import Accounts from './components/admin/Accounts';
 import CashApproval from './components/admin/CashApproval';
 import Ledger from './components/admin/Ledger';
+import ProfitLoss from './components/admin/ProfitLoss';
+import BalanceSheet from './components/admin/BalanceSheet';
+
 
 
 
@@ -145,6 +148,9 @@ function App() {
                                         <Route path="accounts" element={<Accounts />} />  
                                         <Route path="cash-approval" element={<CashApproval />} />
                                         <Route path="ledger" element={<Ledger />} />
+                                        <Route path="profit-loss" element={<ProfitLoss />} />
+                                        <Route path="balance-sheet" element={<BalanceSheet />} />
+
                              
                                     </Routes>
                                 </Layout>

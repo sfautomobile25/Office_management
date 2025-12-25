@@ -115,6 +115,12 @@ export const accountsAPI = {
       params,
       responseType: 'blob'
     }),
+    getPnL: (params) => API.get('/accounts/reports/pnl', { params }),
+    downloadPnL: (params) => API.get('/accounts/reports/pnl/export', { params, responseType: 'blob' }),
+
+    getBalanceSheet: (params) => API.get('/accounts/reports/balance-sheet', { params }),
+    downloadBalanceSheet: (params) => API.get('/accounts/reports/balance-sheet/export', { params, responseType: 'blob' }),
+
 };
 
 export const cashManagementAPI = {

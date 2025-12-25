@@ -7,6 +7,8 @@ function Sidebar({ isOpen, user }) {
         { path: '/admin/accounts', label: 'Accounts Management', icon: '💰' },
         { path: '/admin/cash-approval', label: 'Cash Approval', icon: '✅' },
         { path: '/admin/ledger', label: 'General Ledger', icon: '📒' },
+        { path: '/admin/profit-loss', label: 'Profit & Loss', icon: '📈' },         
+        { path: '/admin/balance-sheet', label: 'Balance Sheet', icon: '📊' },
         { path: '/admin/users', label: 'User Management', icon: '👥' },
         { path: '/admin/permissions', label: 'Permission Settings', icon: '🔐' },
         { path: '/admin/config', label: 'System Configuration', icon: '⚙️' },

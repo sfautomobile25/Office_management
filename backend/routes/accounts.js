@@ -100,6 +100,50 @@ function formatDhakaDateTime(value) {
   }).format(dt);
 }
 
+function pad2(n) { return String(n).padStart(2, '0'); }
+
+function getRangeFromQuery(q) {
+  const period = (q.period || 'monthly').toLowerCase(); // monthly|quarterly|yearly|custom
+  const year = q.year ? Number(q.year) : null;
+  const month = q.month ? Number(q.month) : null;       // 1-12
+  const quarter = q.quarter ? Number(q.quarter) : null; // 1-4
+
+  const start_date = (q.start_date || '').trim();
+  const end_date = (q.end_date || '').trim();
+
+  if (period === 'custom') {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(start_date) || !/^\d{4}-\d{2}-\d{2}$/.test(end_date)) {
+      throw new Error('Invalid custom date range (use start_date/end_date as YYYY-MM-DD)');
+    }
+    return { period, start: start_date, end: end_date, year, month, quarter };
+  }
+
+  if (!year || year < 1900 || year > 3000) throw new Error('Invalid year');
+
+  if (period === 'monthly') {
+    if (!month || month < 1 || month > 12) throw new Error('Invalid month');
+    const start = `${year}-${pad2(month)}-01`;
+    const lastDay = new Date(year, month, 0).getDate();
+    const end = `${year}-${pad2(month)}-${pad2(lastDay)}`;
+    return { period, start, end, year, month, quarter };
+  }
+
+  if (period === 'quarterly') {
+    if (!quarter || quarter < 1 || quarter > 4) throw new Error('Invalid quarter');
+    const startMonth = (quarter - 1) * 3 + 1;
+    const endMonth = startMonth + 2;
+    const start = `${year}-${pad2(startMonth)}-01`;
+    const lastDay = new Date(year, endMonth, 0).getDate();
+    const end = `${year}-${pad2(endMonth)}-${pad2(lastDay)}`;
+    return { period, start, end, year, month, quarter };
+  }
+
+  if (period === 'yearly') {
+    return { period, start: `${year}-01-01`, end: `${year}-12-31`, year, month, quarter };
+  }
+
+  throw new Error('Invalid period');
+}
 
 // Apply accounts access middleware to all routes
 router.use(checkAccountsPermission());
@@ -805,6 +849,366 @@ router.get('/ledger', checkAccountsPermission('reports'), async (req, res) => {
     res.status(500).json({ success: false, error: 'Failed to load ledger' });
   }
 });
+
+// GET /api/accounts/reports/pnl?period=monthly&year=2025&month=12
+router.get('/reports/pnl', checkAccountsPermission('reports'), async (req, res) => {
+  try {
+    const { start, end, period, year, month, quarter } = getRangeFromQuery(req.query);
+
+    // Revenue: credit - debit
+    const revenueRows = await allAsync(
+      `
+      SELECT
+        a.id,
+        a.account_number,
+        a.account_name,
+        COALESCE(SUM(jel.debit), 0) AS debit,
+        COALESCE(SUM(jel.credit), 0) AS credit,
+        (COALESCE(SUM(jel.credit), 0) - COALESCE(SUM(jel.debit), 0)) AS amount
+      FROM accounts a
+      LEFT JOIN journal_entry_lines jel ON jel.account_id = a.id
+      LEFT JOIN journal_entries je ON je.id = jel.journal_entry_id
+        AND je.status = 'posted'
+        AND je.date >= ?
+        AND je.date <= ?
+      WHERE a.status = 'active'
+        AND a.account_type IN ('revenue', 'income')
+      GROUP BY a.id
+      ORDER BY a.account_number
+      `,
+      [start, end]
+    );
+
+    // Expense: debit - credit
+    const expenseRows = await allAsync(
+      `
+      SELECT
+        a.id,
+        a.account_number,
+        a.account_name,
+        COALESCE(SUM(jel.debit), 0) AS debit,
+        COALESCE(SUM(jel.credit), 0) AS credit,
+        (COALESCE(SUM(jel.debit), 0) - COALESCE(SUM(jel.credit), 0)) AS amount
+      FROM accounts a
+      LEFT JOIN journal_entry_lines jel ON jel.account_id = a.id
+      LEFT JOIN journal_entries je ON je.id = jel.journal_entry_id
+        AND je.status = 'posted'
+        AND je.date >= ?
+        AND je.date <= ?
+      WHERE a.status = 'active'
+        AND a.account_type IN ('expense', 'expenses')
+      GROUP BY a.id
+      ORDER BY a.account_number
+      `,
+      [start, end]
+    );
+
+    const totalRevenue = revenueRows.reduce((s, r) => s + Number(r.amount || 0), 0);
+    const totalExpense = expenseRows.reduce((s, r) => s + Number(r.amount || 0), 0);
+    const netProfit = totalRevenue - totalExpense;
+
+    res.json({
+      success: true,
+      report_type: 'pnl',
+      period,
+      year,
+      month,
+      quarter,
+      start_date: start,
+      end_date: end,
+      totals: {
+        revenue: totalRevenue,
+        expense: totalExpense,
+        net_profit: netProfit
+      },
+      revenue: revenueRows,
+      expenses: expenseRows
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(400).json({ success: false, error: e.message || 'Failed to generate P&L' });
+  }
+});
+
+// GET /api/accounts/reports/pnl/export?... -> xlsx
+router.get('/reports/pnl/export', checkAccountsPermission('reports'), async (req, res) => {
+  try {
+    const dataRes = await new Promise((resolve, reject) => {
+      // reuse same logic by calling handler code directly (simple approach: re-run query)
+      resolve(null);
+    });
+
+    const { start, end, period, year, month, quarter } = getRangeFromQuery(req.query);
+
+    const revenueRows = await allAsync(
+      `
+      SELECT a.account_number, a.account_name,
+             (COALESCE(SUM(jel.credit), 0) - COALESCE(SUM(jel.debit), 0)) AS amount
+      FROM accounts a
+      LEFT JOIN journal_entry_lines jel ON jel.account_id = a.id
+      LEFT JOIN journal_entries je ON je.id = jel.journal_entry_id
+        AND je.status = 'posted'
+        AND je.date >= ?
+        AND je.date <= ?
+      WHERE a.status = 'active'
+        AND a.account_type IN ('revenue', 'income')
+      GROUP BY a.id
+      ORDER BY a.account_number
+      `,
+      [start, end]
+    );
+
+    const expenseRows = await allAsync(
+      `
+      SELECT a.account_number, a.account_name,
+             (COALESCE(SUM(jel.debit), 0) - COALESCE(SUM(jel.credit), 0)) AS amount
+      FROM accounts a
+      LEFT JOIN journal_entry_lines jel ON jel.account_id = a.id
+      LEFT JOIN journal_entries je ON je.id = jel.journal_entry_id
+        AND je.status = 'posted'
+        AND je.date >= ?
+        AND je.date <= ?
+      WHERE a.status = 'active'
+        AND a.account_type IN ('expense', 'expenses')
+      GROUP BY a.id
+      ORDER BY a.account_number
+      `,
+      [start, end]
+    );
+
+    const totalRevenue = revenueRows.reduce((s, r) => s + Number(r.amount || 0), 0);
+    const totalExpense = expenseRows.reduce((s, r) => s + Number(r.amount || 0), 0);
+    const netProfit = totalRevenue - totalExpense;
+
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'Real Estate Management';
+    wb.created = new Date();
+
+    const ws = wb.addWorksheet('Profit & Loss');
+    ws.addRow([`Profit & Loss (BDT)`]);
+    ws.addRow([`Period: ${start} to ${end} (${period})`]);
+    ws.addRow([`Generated (Dhaka): ${formatDhakaDateTime(new Date().toISOString())}`]);
+    ws.addRow([]);
+
+    ws.addRow(['REVENUE']);
+    ws.addRow(['Account No', 'Account Name', 'Amount (BDT)']).font = { bold: true };
+    revenueRows.forEach(r => ws.addRow([r.account_number, r.account_name, Number(r.amount || 0)]));
+    ws.addRow(['', 'Total Revenue', totalRevenue]).font = { bold: true };
+    ws.addRow([]);
+
+    ws.addRow(['EXPENSES']);
+    ws.addRow(['Account No', 'Account Name', 'Amount (BDT)']).font = { bold: true };
+    expenseRows.forEach(r => ws.addRow([r.account_number, r.account_name, Number(r.amount || 0)]));
+    ws.addRow(['', 'Total Expense', totalExpense]).font = { bold: true };
+    ws.addRow([]);
+
+    ws.addRow(['', 'NET PROFIT', netProfit]).font = { bold: true };
+
+    ws.getColumn(3).numFmt = '#,##0.00';
+
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="pnl-${start}-to-${end}.xlsx"`
+    );
+
+    await wb.xlsx.write(res);
+    res.end();
+  } catch (e) {
+    console.error(e);
+    res.status(400).json({ success: false, error: e.message || 'Failed to export P&L' });
+  }
+});
+
+// GET /api/accounts/reports/balance-sheet?as_of=YYYY-MM-DD
+router.get('/reports/balance-sheet', checkAccountsPermission('reports'), async (req, res) => {
+  try {
+    const as_of = (req.query.as_of || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(as_of)) {
+      return res.status(400).json({ success: false, error: 'as_of must be YYYY-MM-DD' });
+    }
+
+    // Movements up to as_of (posted only)
+    const rows = await allAsync(
+      `
+      SELECT
+        a.id,
+        a.account_number,
+        a.account_name,
+        a.account_type,
+        COALESCE(SUM(jel.debit), 0) AS debit,
+        COALESCE(SUM(jel.credit), 0) AS credit
+      FROM accounts a
+      LEFT JOIN journal_entry_lines jel ON jel.account_id = a.id
+      LEFT JOIN journal_entries je ON je.id = jel.journal_entry_id
+        AND je.status = 'posted'
+        AND je.date <= ?
+      WHERE a.status = 'active'
+        AND a.account_type IN ('asset','liability','equity')
+      GROUP BY a.id
+      ORDER BY a.account_number
+      `,
+      [as_of]
+    );
+
+    // Normalize balances:
+    // Asset normal debit => debit - credit
+    // Liability/Equity normal credit => credit - debit
+    const assets = [];
+    const liabilities = [];
+    const equity = [];
+
+    let totalAssets = 0;
+    let totalLiabilities = 0;
+    let totalEquity = 0;
+
+    for (const r of rows) {
+      const d = Number(r.debit || 0);
+      const c = Number(r.credit || 0);
+      let balance = 0;
+
+      if (r.account_type === 'asset') balance = d - c;
+      else balance = c - d; // liability/equity
+
+      const item = {
+        account_number: r.account_number,
+        account_name: r.account_name,
+        balance
+      };
+
+      if (r.account_type === 'asset') {
+        assets.push(item);
+        totalAssets += balance;
+      } else if (r.account_type === 'liability') {
+        liabilities.push(item);
+        totalLiabilities += balance;
+      } else if (r.account_type === 'equity') {
+        equity.push(item);
+        totalEquity += balance;
+      }
+    }
+
+    res.json({
+      success: true,
+      report_type: 'balance_sheet',
+      as_of,
+      currency: 'BDT',
+      totals: {
+        assets: totalAssets,
+        liabilities: totalLiabilities,
+        equity: totalEquity,
+        liabilities_plus_equity: totalLiabilities + totalEquity,
+        balanced: Math.abs(totalAssets - (totalLiabilities + totalEquity)) < 0.01
+      },
+      assets,
+      liabilities,
+      equity
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ success: false, error: 'Failed to generate Balance Sheet' });
+  }
+});
+
+// GET /api/accounts/reports/balance-sheet/export?as_of=YYYY-MM-DD
+router.get('/reports/balance-sheet/export', checkAccountsPermission('reports'), async (req, res) => {
+  try {
+    const as_of = (req.query.as_of || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(as_of)) {
+      return res.status(400).json({ success: false, error: 'as_of must be YYYY-MM-DD' });
+    }
+
+    const rows = await allAsync(
+      `
+      SELECT
+        a.account_number,
+        a.account_name,
+        a.account_type,
+        COALESCE(SUM(jel.debit), 0) AS debit,
+        COALESCE(SUM(jel.credit), 0) AS credit
+      FROM accounts a
+      LEFT JOIN journal_entry_lines jel ON jel.account_id = a.id
+      LEFT JOIN journal_entries je ON je.id = jel.journal_entry_id
+        AND je.status = 'posted'
+        AND je.date <= ?
+      WHERE a.status = 'active'
+        AND a.account_type IN ('asset','liability','equity')
+      GROUP BY a.id
+      ORDER BY a.account_number
+      `,
+      [as_of]
+    );
+
+    const assets = [];
+    const liabilities = [];
+    const equity = [];
+
+    let totalAssets = 0;
+    let totalLiabilities = 0;
+    let totalEquity = 0;
+
+    for (const r of rows) {
+      const d = Number(r.debit || 0);
+      const c = Number(r.credit || 0);
+      let balance = 0;
+
+      if (r.account_type === 'asset') balance = d - c;
+      else balance = c - d;
+
+      const item = [r.account_number, r.account_name, balance];
+
+      if (r.account_type === 'asset') { assets.push(item); totalAssets += balance; }
+      if (r.account_type === 'liability') { liabilities.push(item); totalLiabilities += balance; }
+      if (r.account_type === 'equity') { equity.push(item); totalEquity += balance; }
+    }
+
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'Real Estate Management';
+    wb.created = new Date();
+
+    const ws = wb.addWorksheet('Balance Sheet');
+    ws.addRow([`Balance Sheet (BDT)`]);
+    ws.addRow([`As of: ${as_of}`]);
+    ws.addRow([`Generated (Dhaka): ${formatDhakaDateTime(new Date().toISOString())}`]);
+    ws.addRow([]);
+
+    const addSection = (title, items, total) => {
+      ws.addRow([title]).font = { bold: true };
+      ws.addRow(['Account No', 'Account Name', 'Balance (BDT)']).font = { bold: true };
+      items.forEach(r => ws.addRow(r));
+      ws.addRow(['', `Total ${title}`, total]).font = { bold: true };
+      ws.addRow([]);
+    };
+
+    addSection('Assets', assets, totalAssets);
+    addSection('Liabilities', liabilities, totalLiabilities);
+    addSection('Equity', equity, totalEquity);
+
+    ws.addRow(['', 'Liabilities + Equity', totalLiabilities + totalEquity]).font = { bold: true };
+    ws.addRow(['', 'Balanced?', Math.abs(totalAssets - (totalLiabilities + totalEquity)) < 0.01 ? 'YES' : 'NO']).font = { bold: true };
+
+    ws.getColumn(3).numFmt = '#,##0.00';
+
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="balance-sheet-as-of-${as_of}.xlsx"`
+    );
+
+    await wb.xlsx.write(res);
+    res.end();
+  } catch (e) {
+    console.error(e);
+    res.status(400).json({ success: false, error: e.message || 'Failed to export Balance Sheet' });
+  }
+});
+
 
 
 module.exports = router;
