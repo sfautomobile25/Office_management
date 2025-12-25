@@ -108,7 +108,12 @@ export const accountsAPI = {
     // Permissions
     getPermissions: () => API.get('/accounts/permissions'),
     getMyPermissions: () => API.get('/accounts/my-permissions'),
-    grantPermission: (permissionData) => API.post('/accounts/permissions', permissionData)
+    grantPermission: (permissionData) => API.post('/accounts/permissions', permissionData),
+    downloadLedger: (params) =>
+    API.get('/accounts/ledger/export', {
+      params,
+      responseType: 'blob'
+    })
 };
 
 export const cashManagementAPI = {

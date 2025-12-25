@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const { runAsync, getAsync, allAsync } = require('../database');
+const ExcelJS = require('exceljs');
+
 
 // Middleware to check accounts permissions
 const checkAccountsPermission = (permissionType, resourceType) => {
@@ -46,6 +48,58 @@ const checkAccountsPermission = (permissionType, resourceType) => {
         next();
     };
 };
+
+function pad2(n) { return String(n).padStart(2, '0'); }
+
+function getDateRangeFromQuery(q) {
+  const period = (q.period || 'monthly').toLowerCase(); // monthly|quarterly|yearly
+  const year = Number(q.year);
+  const month = Number(q.month);       // 1-12 (for monthly)
+  const quarter = Number(q.quarter);   // 1-4  (for quarterly)
+
+  if (!year || year < 1900 || year > 3000) throw new Error('Invalid year');
+
+  let start, end;
+
+  if (period === 'monthly') {
+    if (!month || month < 1 || month > 12) throw new Error('Invalid month');
+    start = `${year}-${pad2(month)}-01`;
+    const lastDay = new Date(year, month, 0).getDate();
+    end = `${year}-${pad2(month)}-${pad2(lastDay)}`;
+  } else if (period === 'quarterly') {
+    if (!quarter || quarter < 1 || quarter > 4) throw new Error('Invalid quarter');
+    const startMonth = (quarter - 1) * 3 + 1;
+    const endMonth = startMonth + 2;
+    start = `${year}-${pad2(startMonth)}-01`;
+    const lastDay = new Date(year, endMonth, 0).getDate();
+    end = `${year}-${pad2(endMonth)}-${pad2(lastDay)}`;
+  } else if (period === 'yearly') {
+    start = `${year}-01-01`;
+    end = `${year}-12-31`;
+  } else {
+    throw new Error('Invalid period (monthly|quarterly|yearly)');
+  }
+
+  return { period, year, month, quarter, start, end };
+}
+
+function formatDhakaDateTime(value) {
+  if (!value) return '';
+  const dt = new Date(String(value).replace(' ', 'T'));
+  if (Number.isNaN(dt.getTime())) return String(value);
+
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Dhaka',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true
+  }).format(dt);
+}
+
 
 // Apply accounts access middleware to all routes
 router.use(checkAccountsPermission());
@@ -464,6 +518,198 @@ router.get('/my-permissions', async (req, res) => {
         console.error('Error fetching user permissions:', error);
         res.status(500).json({ success: false, error: 'Failed to fetch permissions' });
     }
+});
+
+router.get('/ledger/export', checkAccountsPermission('reports'), async (req, res) => {
+  try {
+    const { start, end, period, year, month, quarter } = getDateRangeFromQuery(req.query);
+    const accountId = req.query.account_id ? Number(req.query.account_id) : null;
+
+    // Load accounts
+    const accounts = await allAsync(
+      `SELECT id, account_number, account_name, account_type, currency
+       FROM accounts
+       WHERE status = 'active'
+       ${accountId ? 'AND id = ?' : ''}
+       ORDER BY account_number`,
+      accountId ? [accountId] : []
+    );
+
+    if (!accounts.length) {
+      return res.status(404).json({ success: false, error: 'No accounts found' });
+    }
+
+    // Workbook
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'Real Estate Management';
+    wb.created = new Date();
+
+    // Summary sheet
+    const wsSummary = wb.addWorksheet('Summary');
+    wsSummary.columns = [
+      { header: 'Account No', key: 'account_number', width: 14 },
+      { header: 'Account Name', key: 'account_name', width: 30 },
+      { header: 'Type', key: 'account_type', width: 14 },
+      { header: 'Currency', key: 'currency', width: 10 },
+      { header: 'Opening', key: 'opening', width: 16 },
+      { header: 'Debit', key: 'debit', width: 16 },
+      { header: 'Credit', key: 'credit', width: 16 },
+      { header: 'Closing', key: 'closing', width: 16 }
+    ];
+    wsSummary.getRow(1).font = { bold: true };
+
+    // For each account, build a ledger sheet
+    for (const acc of accounts) {
+      // Opening balance = all posted movements before start
+      const openingRow = await getAsync(
+        `
+        SELECT
+          COALESCE(SUM(jel.debit), 0) AS d,
+          COALESCE(SUM(jel.credit), 0) AS c
+        FROM journal_entry_lines jel
+        JOIN journal_entries je ON je.id = jel.journal_entry_id
+        WHERE jel.account_id = ?
+          AND je.status = 'posted'
+          AND je.date < ?
+        `,
+        [acc.id, start]
+      );
+      const opening = Number(openingRow?.d || 0) - Number(openingRow?.c || 0);
+
+      // Period lines
+      const lines = await allAsync(
+        `
+        SELECT
+          je.date,
+          je.entry_number,
+          je.description AS entry_description,
+          je.posted_at,
+          jel.description AS line_description,
+          jel.debit,
+          jel.credit
+        FROM journal_entry_lines jel
+        JOIN journal_entries je ON je.id = jel.journal_entry_id
+        WHERE jel.account_id = ?
+          AND je.status = 'posted'
+          AND je.date >= ?
+          AND je.date <= ?
+        ORDER BY je.date ASC, je.id ASC, jel.line_number ASC
+        `,
+        [acc.id, start, end]
+      );
+
+      // Totals + running
+      let running = opening;
+      let totalDebit = 0;
+      let totalCredit = 0;
+
+      // Sheet name safe
+      const sheetName = `${acc.account_number} ${acc.account_name}`.slice(0, 28);
+      const ws = wb.addWorksheet(sheetName);
+
+      ws.addRow([`Ledger: ${acc.account_number} - ${acc.account_name}`]);
+      ws.addRow([`Period: ${start} to ${end} (${period})`]);
+      ws.addRow([`Currency: ${acc.currency || 'BDT'}`]);
+      ws.addRow([]);
+
+      ws.columns = [
+        { header: 'Date', key: 'date', width: 12 },
+        { header: 'Entry No', key: 'entry_number', width: 18 },
+        { header: 'Posted (Dhaka)', key: 'posted_at', width: 22 },
+        { header: 'Description', key: 'desc', width: 40 },
+        { header: 'Debit', key: 'debit', width: 14 },
+        { header: 'Credit', key: 'credit', width: 14 },
+        { header: 'Running Balance', key: 'running', width: 18 }
+      ];
+
+      ws.getRow(5).font = { bold: true }; // header row after meta rows
+
+      // Opening row
+      ws.addRow({
+        date: start,
+        entry_number: '',
+        posted_at: '',
+        desc: 'Opening Balance',
+        debit: '',
+        credit: '',
+        running: opening
+      });
+
+      for (const r of lines) {
+        const d = Number(r.debit || 0);
+        const c = Number(r.credit || 0);
+
+        totalDebit += d;
+        totalCredit += c;
+        running += (d - c);
+
+        ws.addRow({
+          date: r.date,
+          entry_number: r.entry_number,
+          posted_at: formatDhakaDateTime(r.posted_at),
+          desc: (r.line_description || r.entry_description || '').slice(0, 300),
+          debit: d || '',
+          credit: c || '',
+          running
+        });
+      }
+
+      // Closing row
+      ws.addRow({});
+      ws.addRow({
+        date: end,
+        entry_number: '',
+        posted_at: '',
+        desc: 'Closing Balance',
+        debit: '',
+        credit: '',
+        running
+      });
+
+      // Number formatting
+      ['E','F','G'].forEach(col => {
+        ws.getColumn(col).numFmt = '#,##0.00';
+      });
+
+      // Summary row
+      wsSummary.addRow({
+        account_number: acc.account_number,
+        account_name: acc.account_name,
+        account_type: acc.account_type,
+        currency: acc.currency || 'BDT',
+        opening,
+        debit: totalDebit,
+        credit: totalCredit,
+        closing: running
+      });
+    }
+
+    // Format summary numeric columns
+    ['E','F','G','H'].forEach(col => {
+      wsSummary.getColumn(col).numFmt = '#,##0.00';
+    });
+
+    // Response download
+    const fileTag =
+      period === 'monthly' ? `${year}-${pad2(month)}` :
+      period === 'quarterly' ? `${year}-Q${quarter}` :
+      `${year}`;
+
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="ledger-${fileTag}.xlsx"`
+    );
+
+    await wb.xlsx.write(res);
+    res.end();
+  } catch (e) {
+    console.error(e);
+    res.status(400).json({ success: false, error: e.message || 'Failed to export ledger' });
+  }
 });
 
 module.exports = router;

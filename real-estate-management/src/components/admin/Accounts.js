@@ -13,15 +13,19 @@ function Accounts() {
     const [recentBalances, setRecentBalances] = useState([]);
     const [recentBalancesLoading, setRecentBalancesLoading] = useState(false);
     const [recentBalancesError, setRecentBalancesError] = useState('');
-        // Expense analysis UI states
-        const [expensePeriod, setExpensePeriod] = useState('month');
-        const [expenseLoading, setExpenseLoading] = useState(false);
-        const [expenseError, setExpenseError] = useState('');
+    // Expense analysis UI states
+    const [expensePeriod, setExpensePeriod] = useState('month');
+    const [expenseLoading, setExpenseLoading] = useState(false);
+    const [expenseError, setExpenseError] = useState('');
+    const [ledgerPeriod, setLedgerPeriod] = useState('monthly'); // monthly|quarterly|yearly
+    const [ledgerYear, setLedgerYear] = useState(new Date().getFullYear());
+    const [ledgerMonth, setLedgerMonth] = useState(new Date().getMonth() + 1); // 1-12
+    const [ledgerQuarter, setLedgerQuarter] = useState(1); // 1-4
+    const [ledgerDownloading, setLedgerDownloading] = useState(false);
 
 
-    
     // Form states
-    const [newCashTransaction, setNewCashTransaction] = useState({
+const [newCashTransaction, setNewCashTransaction] = useState({
         date: new Date().toISOString().split('T')[0],
         time: new Date().toTimeString().split(' ')[0].substring(0, 5),
         description: '',
@@ -33,18 +37,18 @@ function Accounts() {
         received_from: '',
         paid_to: '',
         notes: ''
-    });
+});
     
-    const [dailyBalance, setDailyBalance] = useState({
+const [dailyBalance, setDailyBalance] = useState({
         date: new Date().toISOString().split('T')[0],
         opening_balance: '',
         cash_received: '',
         cash_paid: ''
-    });
+});
 
-    useEffect(() => {
+useEffect(() => {
         fetchData();
-    }, [activeTab]);
+}, [activeTab]);
 
 const loadExpenseAnalysis = async (period = expensePeriod) => {
   try {
@@ -55,7 +59,47 @@ const loadExpenseAnalysis = async (period = expensePeriod) => {
   }
 };
 
-    const getDhakaDateString = (date = new Date()) => {
+const downloadLedgerExcel = async () => {
+  try {
+    setLedgerDownloading(true);
+
+    const params =
+      ledgerPeriod === 'monthly'
+        ? { period: 'monthly', year: ledgerYear, month: ledgerMonth }
+        : ledgerPeriod === 'quarterly'
+        ? { period: 'quarterly', year: ledgerYear, quarter: ledgerQuarter }
+        : { period: 'yearly', year: ledgerYear };
+
+    const res = await accountsAPI.downloadLedger(params);
+
+    const blob = new Blob([res.data], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    });
+
+    const tag =
+      ledgerPeriod === 'monthly'
+        ? `${ledgerYear}-${String(ledgerMonth).padStart(2, '0')}`
+        : ledgerPeriod === 'quarterly'
+        ? `${ledgerYear}-Q${ledgerQuarter}`
+        : `${ledgerYear}`;
+
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ledger-${tag}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  } catch (e) {
+    alert(e.response?.data?.error || 'Ledger download failed');
+  } finally {
+    setLedgerDownloading(false);
+  }
+};
+
+
+const getDhakaDateString = (date = new Date()) => {
   // Always format date as YYYY-MM-DD in Asia/Dhaka
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Dhaka',
@@ -69,7 +113,6 @@ const loadExpenseAnalysis = async (period = expensePeriod) => {
   const d = parts.find(p => p.type === 'day')?.value;
   return `${y}-${m}-${d}`;
 };
-
 
 const fetchData = async () => {
   setLoading(true);
@@ -105,7 +148,7 @@ const fetchData = async () => {
   }
 };
 
-    const handleCashTransaction = async (e) => {
+const handleCashTransaction = async (e) => {
         e.preventDefault();
         try {
             const response = await cashManagementAPI.createCashTransaction(newCashTransaction);
@@ -130,9 +173,9 @@ const fetchData = async () => {
             console.error('Error recording transaction:', error);
             alert('Failed to record transaction');
         }
-    };
+};
 
-    const updateDailyBalance = async () => {
+const updateDailyBalance = async () => {
         try {
             const response = await cashManagementAPI.updateDailyBalance(dailyBalance);
             if (response.data.success) {
@@ -143,9 +186,9 @@ const fetchData = async () => {
             console.error('Error updating balance:', error);
             alert('Failed to update balance');
         }
-    };
+};
 
-    const generateDailyReport = async () => {
+const generateDailyReport = async () => {
         try {
             const response = await cashManagementAPI.generateDailySummary({
                 date: new Date().toISOString().split('T')[0]
@@ -158,7 +201,7 @@ const fetchData = async () => {
             console.error('Error generating report:', error);
             alert('Failed to generate report');
         }
-    };
+};
 
 const loadRecentDailyBalances = async () => {
   try {
@@ -361,7 +404,7 @@ const renderDashboard = () => {
 };
 
 
-    const renderDailyTransactions = () => (
+const renderDailyTransactions = () => (
         <div className="daily-transactions-tab">
             <div className="page-header">
                 <h3>💵 Daily Cash Transactions</h3>
@@ -609,9 +652,9 @@ const renderDashboard = () => {
                 </div>
             </div>
         </div>
-    );
+);
 
-    const renderBalanceSheet = () => (
+const renderBalanceSheet = () => (
         <div className="balance-sheet-tab">
             <div className="page-header">
                 <h3>📋 Daily Balance Sheet</h3>
@@ -770,7 +813,57 @@ const renderDashboard = () => {
                 </div>
             </div>
         </div>
-    );
+);
+const renderReport = () => (
+<div className="card">
+  <h3>📥 Ledger Export (Excel)</h3>
+
+  <div className="ledger-export-controls">
+    <select value={ledgerPeriod} onChange={(e) => setLedgerPeriod(e.target.value)}>
+      <option value="monthly">Monthly</option>
+      <option value="quarterly">Quarterly</option>
+      <option value="yearly">Yearly</option>
+    </select>
+
+    <input
+      type="number"
+      min="2000"
+      max="2100"
+      value={ledgerYear}
+      onChange={(e) => setLedgerYear(Number(e.target.value))}
+      style={{ width: 110 }}
+    />
+
+    {ledgerPeriod === 'monthly' && (
+      <select value={ledgerMonth} onChange={(e) => setLedgerMonth(Number(e.target.value))}>
+        {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+          <option key={m} value={m}>
+            {String(m).padStart(2, '0')}
+          </option>
+        ))}
+      </select>
+    )}
+
+    {ledgerPeriod === 'quarterly' && (
+      <select value={ledgerQuarter} onChange={(e) => setLedgerQuarter(Number(e.target.value))}>
+        <option value={1}>Q1</option>
+        <option value={2}>Q2</option>
+        <option value={3}>Q3</option>
+        <option value={4}>Q4</option>
+      </select>
+    )}
+
+    <button className="btn-primary" onClick={downloadLedgerExcel} disabled={ledgerDownloading}>
+      {ledgerDownloading ? 'Preparing...' : 'Download Excel'}
+    </button>
+  </div>
+
+  <div className="text-muted" style={{ marginTop: 10 }}>
+    Export includes Summary + per-account running ledger. Time shown in Asia/Dhaka.
+  </div>
+</div>
+
+);
 
 const renderExpenseAnalysis = () => {
     // Allow UI to render even if null (so we can show loading/error nicely)
@@ -998,7 +1091,7 @@ const renderExpenseAnalysis = () => {
                     {activeTab === 'daily-transactions' && renderDailyTransactions()}
                     {activeTab === 'balance-sheet' && renderBalanceSheet()}
                     {activeTab === 'expenses' && renderExpenseAnalysis()}
-                    {/* Add other tab renderings as needed */}
+                    {activeTab === 'reports' && renderReport()}
                 </>
             )}
         </div>
