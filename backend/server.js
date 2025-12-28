@@ -44,6 +44,8 @@ const accountsRoutes = require('./routes/accounts');
 const cashManagementRoutes = require('./routes/cashManagement');
 const cashApprovalRoutes = require('./routes/cashApproval');
 const receiptsRoutes = require('./routes/receipts');
+const userManagementRoutes = require('./routes/userManagement');
+
 
 
 // Use routes
@@ -53,6 +55,8 @@ app.use('/api/accounts', accountsRoutes);
 app.use('/api/cash', cashManagementRoutes);
 app.use('/api/cash', cashApprovalRoutes);
 app.use('/api/receipts', receiptsRoutes);
+app.use('/api/user-management', userManagementRoutes);
+
 
 // Start server
 app.listen(PORT, () => {

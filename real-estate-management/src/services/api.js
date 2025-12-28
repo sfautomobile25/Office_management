@@ -189,4 +189,12 @@ export const receiptsAPI = {
   getOne: (id) => API.get(`/receipts/${id}`),
 };
 
+export const userManagementAPI = {
+  getUsers: () => API.get('/user-management/users'),
+  createUser: (userData) => API.post('/user-management/users', userData),
+  updateUser: (id, userData) => API.put(`/user-management/users/${id}`, userData),
+  deleteUser: (id) => API.delete(`/user-management/users/${id}`)
+};
+
+
 export default API;

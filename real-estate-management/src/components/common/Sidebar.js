@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { NavLink } from "react-router-dom";
 import { cashApprovalAPI } from "../../services/api";
+import { ROUTE_PERMS } from './permissionMap';
+
 
 function Sidebar({ isOpen, user }) {
   const [pendingCount, setPendingCount] = useState(0);
@@ -29,6 +31,26 @@ function Sidebar({ isOpen, user }) {
     };
   }, []);
 
+  const getMe = () => {
+  try {
+    return JSON.parse(localStorage.getItem('user') || 'null');
+  } catch {
+    return null;
+  }
+};
+
+const canAccess = (path) => {
+  const me = getMe();
+  if (!me) return false;
+  if (me.role === 'admin') return true;
+
+  const required = ROUTE_PERMS[path];
+  if (!required) return true; // if not mapped, allow (or set false if you want strict)
+  const perms = Array.isArray(me.permissions) ? me.permissions : [];
+  return perms.includes('all') || perms.includes(required);
+};
+
+
   const menuItems = [
     { path: "/admin/dashboard", label: "Dashboard", icon: "📊" },
     { path: "/admin/accounts", label: "Accounts Management", icon: "💰" },
@@ -52,11 +74,14 @@ function Sidebar({ isOpen, user }) {
     { path: "/admin/currency", label: "Currency Converter", icon: "💰" },
   ];
 
+  const visibleMenuItems = menuItems.filter((item) => canAccess(item.path));
+
+
   return (
     <aside className={`sidebar ${isOpen ? "open" : "closed"}`}>
       <nav className="sidebar-nav">
         <ul>
-          {menuItems.map((item) => (
+          {visibleMenuItems.map((item) => (
             <li key={item.path}>
               <NavLink
                 to={item.path}
