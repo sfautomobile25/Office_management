@@ -150,6 +150,10 @@ export const cashManagementAPI = {
     responseType: 'blob'
   }),
 
+  getMoneyReceipts: (params) => API.get('/cash/money-receipts', { params }),
+  getMoneyReceipt: (id) => API.get(`/cash/money-receipts/${id}`),
+
+
 };
 
 // System API
@@ -165,6 +169,12 @@ export const cashApprovalAPI = {
   getMonthlyByStatus: (status, month) =>
     API.get(`/cash/transactions?status=${encodeURIComponent(status)}&month=${encodeURIComponent(month)}`)
 };
+
+export const receiptsAPI = {
+  getByDate: (params) => API.get('/receipts', { params }),
+  getOne: (id) => API.get(`/receipts/${id}`)
+};
+
 
 
 

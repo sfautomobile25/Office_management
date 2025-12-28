@@ -27,7 +27,6 @@ function requireReportAccess(req, res, next) {
   next();
 }
 
-
 // Get daily cash balance
 router.get('/daily-cash', async (req, res) => {
     try {
@@ -656,6 +655,104 @@ router.get('/daily-report/export', requireReportAccess, async (req, res) => {
     res.status(500).json({ success: false, error: 'Failed to generate daily report' });
   }
 });
+
+// GET /api/cash/money-receipts?date=YYYY-MM-DD
+router.get('/money-receipts', async (req, res) => {
+  try {
+    if (!req.session?.user) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+    const date = (req.query.date || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ success: false, error: 'Invalid date (YYYY-MM-DD)' });
+    }
+
+    const rows = await allAsync(
+      `
+      SELECT
+        mr.id,
+        mr.receipt_no,
+        mr.date,
+        mr.amount,
+        mr.transaction_type AS receipt_type,
+        mr.description,
+        mr.created_at,
+        ct.transaction_id,
+        ct.status
+      FROM money_receipts mr
+      JOIN cash_transactions ct ON ct.id = mr.cash_transaction_id
+      WHERE mr.date = ?
+      ORDER BY mr.created_at DESC
+      `,
+      [date]
+    );
+
+    res.json({ success: true, receipts: rows });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ success: false, error: 'Failed to load receipts' });
+  }
+});
+
+router.get('/money-receipts/:id', async (req, res) => {
+  try {
+    if (!req.session?.user) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+    const id = Number(req.params.id);
+    const row = await getAsync(
+      `
+      SELECT
+        mr.*,
+        ct.transaction_id,
+        ct.status,
+        u1.username AS created_by_name,
+        u2.username AS approved_by_name
+      FROM money_receipts mr
+      JOIN cash_transactions ct ON ct.id = mr.cash_transaction_id
+      LEFT JOIN users u1 ON u1.id = mr.created_by
+      LEFT JOIN users u2 ON u2.id = mr.approved_by
+      WHERE mr.id = ?
+      `,
+      [id]
+    );
+
+    if (!row) return res.status(404).json({ success: false, error: 'Receipt not found' });
+
+    res.json({ success: true, receipt: row });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ success: false, error: 'Failed to load receipt' });
+  }
+});
+
+// Get money receipt by cash transaction id
+router.get('/money-receipts/:cashTransactionId', async (req, res) => {
+    try {
+        const { cashTransactionId } = req.params;
+
+        const receipt = await getAsync(
+            `SELECT mr.*, 
+                    u1.username AS created_by_name,
+                    u2.username AS approved_by_name
+             FROM money_receipts mr
+             LEFT JOIN users u1 ON mr.created_by = u1.id
+             LEFT JOIN users u2 ON mr.approved_by = u2.id
+             WHERE mr.cash_transaction_id = ?`,
+            [cashTransactionId]
+        );
+
+        if (!receipt) {
+            return res.status(404).json({ success: false, error: 'Receipt not found' });
+        }
+
+        res.json({ success: true, receipt });
+    } catch (error) {
+        console.error('Error fetching receipt:', error);
+        res.status(500).json({ success: false, error: 'Failed to fetch receipt' });
+    }
+});
+
+
+
 
 
 module.exports = router;

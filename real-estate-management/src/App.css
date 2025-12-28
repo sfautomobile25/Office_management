@@ -5197,4 +5197,32 @@ input:checked + .switch-slider:before {
   .ledger-cards { display: grid; }
 }
 
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 999;
+  padding: 16px;
+}
+
+.modal-content {
+  width: min(720px, 100%);
+  background: rgba(15,23,42,0.95);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 16px;
+  padding: 16px;
+  color: #fff;
+}
+
+.box {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 14px;
+  padding: 14px;
+}
+
+
 

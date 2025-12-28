@@ -1,35 +1,39 @@
 // backend/routes/cashApproval.js
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const { runAsync, getAsync, allAsync } = require('../database');
+const { runAsync, getAsync, allAsync } = require("../database");
 
 // Only admin / accounts_officer / manager can approve cash
 function requireCashApprover(req, res, next) {
   if (!req.session?.user) {
-    return res.status(401).json({ success: false, error: 'Authentication required' });
+    return res
+      .status(401)
+      .json({ success: false, error: "Authentication required" });
   }
   const role = req.session.user.role;
-  if (role !== 'admin' && role !== 'accounts_officer' && role !== 'manager') {
-    return res.status(403).json({ success: false, error: 'Not allowed' });
+  if (role !== "admin" && role !== "accounts_officer" && role !== "manager") {
+    return res.status(403).json({ success: false, error: "Not allowed" });
   }
   next();
 }
 
 async function updateDailyCashBalance(date, type, amount) {
-  const today = await getAsync('SELECT * FROM daily_cash_balance WHERE date = ?', [date]);
+  const today = await getAsync(
+    "SELECT * FROM daily_cash_balance WHERE date = ?",
+    [date]
+  );
   const amt = parseFloat(amount || 0);
 
-  // helper to get opening from previous day
   const getLatestClosingBalance = async (d) => {
     const latest = await getAsync(
-      'SELECT closing_balance FROM daily_cash_balance WHERE date < ? ORDER BY date DESC LIMIT 1',
+      "SELECT closing_balance FROM daily_cash_balance WHERE date < ? ORDER BY date DESC LIMIT 1",
       [d]
     );
     return latest ? latest.closing_balance : 0;
   };
 
   if (today) {
-    if (type === 'receipt') {
+    if (type === "receipt") {
       await runAsync(
         `UPDATE daily_cash_balance
          SET cash_received = cash_received + ?,
@@ -37,7 +41,7 @@ async function updateDailyCashBalance(date, type, amount) {
          WHERE date = ?`,
         [amt, amt, date]
       );
-    } else if (type === 'payment') {
+    } else if (type === "payment") {
       await runAsync(
         `UPDATE daily_cash_balance
          SET cash_paid = cash_paid + ?,
@@ -51,14 +55,14 @@ async function updateDailyCashBalance(date, type, amount) {
 
   const opening = await getLatestClosingBalance(date);
 
-  if (type === 'receipt') {
+  if (type === "receipt") {
     await runAsync(
       `INSERT INTO daily_cash_balance
        (date, opening_balance, cash_received, cash_paid, closing_balance)
        VALUES (?, ?, ?, ?, ?)`,
       [date, opening, amt, 0, parseFloat(opening) + amt]
     );
-  } else if (type === 'payment') {
+  } else if (type === "payment") {
     await runAsync(
       `INSERT INTO daily_cash_balance
        (date, opening_balance, cash_received, cash_paid, closing_balance)
@@ -68,7 +72,13 @@ async function updateDailyCashBalance(date, type, amount) {
   }
 }
 
-async function ensureAccount({ account_number, account_name, account_type, currency = 'USD' }) {
+// ✅ Default currency changed to BDT
+async function ensureAccount({
+  account_number,
+  account_name,
+  account_type,
+  currency = "BDT",
+}) {
   const existing = await getAsync(
     `SELECT id FROM accounts WHERE account_number = ?`,
     [account_number]
@@ -83,8 +93,14 @@ async function ensureAccount({ account_number, account_name, account_type, curre
   return result.lastID;
 }
 
-async function postJournalEntry({ date, description, total_amount, created_by, approved_by, lines }) {
-  // lines: [{ account_id, description, debit, credit }]
+async function postJournalEntry({
+  date,
+  description,
+  total_amount,
+  created_by,
+  approved_by,
+  lines,
+}) {
   const entry_number = `JE-CASH-${Date.now()}`;
 
   const entryRes = await runAsync(
@@ -103,10 +119,17 @@ async function postJournalEntry({ date, description, total_amount, created_by, a
       `INSERT INTO journal_entry_lines
        (journal_entry_id, account_id, description, debit, credit, line_number)
        VALUES (?, ?, ?, ?, ?, ?)`,
-      [journal_entry_id, ln.account_id, ln.description || '', ln.debit || 0, ln.credit || 0, i + 1]
+      [
+        journal_entry_id,
+        ln.account_id,
+        ln.description || "",
+        ln.debit || 0,
+        ln.credit || 0,
+        i + 1,
+      ]
     );
 
-    // Update balances (same logic as your accounts.js journal entry)
+    // Update balances
     if ((ln.debit || 0) > 0) {
       await runAsync(
         `UPDATE accounts SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
@@ -124,8 +147,16 @@ async function postJournalEntry({ date, description, total_amount, created_by, a
   return { journal_entry_id, entry_number };
 }
 
+// ✅ consistent receipt number format (unique + readable)
+function makeReceiptNo(tx) {
+  // MR-YYYYMMDD-000123
+  const ymd = String(tx.date || "").replace(/-/g, "");
+  const idPart = String(tx.id).padStart(6, "0");
+  return `MR-${ymd}-${idPart}`;
+}
+
 // 1) List pending cash transactions
-router.get('/pending-transactions', requireCashApprover, async (req, res) => {
+router.get("/pending-transactions", requireCashApprover, async (req, res) => {
   try {
     const rows = await allAsync(
       `SELECT ct.*, u.username AS created_by_name
@@ -137,176 +168,280 @@ router.get('/pending-transactions', requireCashApprover, async (req, res) => {
     res.json({ success: true, transactions: rows });
   } catch (e) {
     console.error(e);
-    res.status(500).json({ success: false, error: 'Failed to fetch pending transactions' });
+    res
+      .status(500)
+      .json({ success: false, error: "Failed to fetch pending transactions" });
   }
 });
 
-router.post('/approve-transaction/:id', requireCashApprover, async (req, res) => {
-  const { id } = req.params;
+router.post(
+  "/approve-transaction/:id",
+  requireCashApprover,
+  async (req, res) => {
+    const { id } = req.params;
 
-  try {
-    await runAsync('BEGIN TRANSACTION');
+    try {
+      await runAsync("BEGIN TRANSACTION");
 
-    const tx = await getAsync(`SELECT * FROM cash_transactions WHERE id = ?`, [id]);
-    if (!tx) {
-      await runAsync('ROLLBACK');
-      return res.status(404).json({ success: false, error: 'Transaction not found' });
-    }
-    if (tx.status !== 'pending') {
-      await runAsync('ROLLBACK');
-      return res.status(400).json({ success: false, error: 'Only pending transactions can be approved' });
-    }
+      const tx = await getAsync(
+        `SELECT * FROM cash_transactions WHERE id = ?`,
+        [id]
+      );
+      if (!tx) {
+        await runAsync("ROLLBACK");
+        return res
+          .status(404)
+          .json({ success: false, error: "Transaction not found" });
+      }
+      if (tx.status !== "pending") {
+        await runAsync("ROLLBACK");
+        return res
+          .status(400)
+          .json({
+            success: false,
+            error: "Only pending transactions can be approved",
+          });
+      }
 
-    // ✅ Ensure default accounts exist
-    const cashAccountId = await ensureAccount({
-      account_number: '1010',
-      account_name: 'Cash',
-      account_type: 'asset'
-    });
+      // ✅ Ensure default accounts exist
+      const cashAccountId = await ensureAccount({
+        account_number: "1010",
+        account_name: "Cash",
+        account_type: "asset",
+      });
 
-    const cashReceiptIncomeId = await ensureAccount({
-      account_number: '4000',
-      account_name: 'Cash Receipts (Income)',
-      account_type: 'revenue'
-    });
+      const cashReceiptIncomeId = await ensureAccount({
+        account_number: "4000",
+        account_name: "Cash Receipts (Income)",
+        account_type: "revenue",
+      });
 
-    const cashPaymentExpenseId = await ensureAccount({
-      account_number: '5000',
-      account_name: 'Cash Payments (Expense)',
-      account_type: 'expense'
-    });
+      const cashPaymentExpenseId = await ensureAccount({
+        account_number: "5000",
+        account_name: "Cash Payments (Expense)",
+        account_type: "expense",
+      });
 
-    const amt = Number(tx.amount);
+      const amt = Number(tx.amount);
 
-    // ✅ Build journal lines based on receipt/payment
-    let lines = [];
-    let jeDescription = `Cash ${tx.transaction_type}: ${tx.description} (CashTx: ${tx.transaction_id})`;
+      // ✅ Build journal lines
+      let lines = [];
+      const jeDescription = `Cash ${tx.transaction_type}: ${tx.description} (CashTx: ${tx.transaction_id})`;
 
-    if (tx.transaction_type === 'receipt') {
-      // Debit Cash, Credit Income
-      lines = [
-        { account_id: cashAccountId, description: tx.description, debit: amt, credit: 0 },
-        { account_id: cashReceiptIncomeId, description: tx.description, debit: 0, credit: amt }
-      ];
-    } else if (tx.transaction_type === 'payment') {
-      // Debit Expense, Credit Cash
-      lines = [
-        { account_id: cashPaymentExpenseId, description: tx.description, debit: amt, credit: 0 },
-        { account_id: cashAccountId, description: tx.description, debit: 0, credit: amt }
-      ];
-    } else {
-      await runAsync('ROLLBACK');
-      return res.status(400).json({ success: false, error: 'Only receipt/payment supported for auto posting' });
-    }
+      if (tx.transaction_type === "receipt") {
+        lines = [
+          {
+            account_id: cashAccountId,
+            description: tx.description,
+            debit: amt,
+            credit: 0,
+          },
+          {
+            account_id: cashReceiptIncomeId,
+            description: tx.description,
+            debit: 0,
+            credit: amt,
+          },
+        ];
+      } else if (tx.transaction_type === "payment") {
+        lines = [
+          {
+            account_id: cashPaymentExpenseId,
+            description: tx.description,
+            debit: amt,
+            credit: 0,
+          },
+          {
+            account_id: cashAccountId,
+            description: tx.description,
+            debit: 0,
+            credit: amt,
+          },
+        ];
+      } else {
+        await runAsync("ROLLBACK");
+        return res
+          .status(400)
+          .json({ success: false, error: "Only receipt/payment supported" });
+      }
 
-    // ✅ Update daily cash balance (your fixed version)
-    await updateDailyCashBalance(tx.date, tx.transaction_type, tx.amount);
+      // ✅ Update daily cash balance
+      await updateDailyCashBalance(tx.date, tx.transaction_type, tx.amount);
 
-    // ✅ Create posted journal entry
-    const je = await postJournalEntry({
-      date: tx.date,
-      description: jeDescription,
-      total_amount: amt,
-      created_by: tx.created_by || req.session.user.id,
-      approved_by: req.session.user.id,
-      lines
-    });
+      // ✅ Create journal entry
+      const je = await postJournalEntry({
+        date: tx.date,
+        description: jeDescription,
+        total_amount: amt,
+        created_by: tx.created_by || req.session.user.id,
+        approved_by: req.session.user.id,
+        lines,
+      });
 
-    // ✅ Mark cash transaction approved
-    await runAsync(
-      `UPDATE cash_transactions
+      // ✅ Mark cash transaction approved
+      await runAsync(
+        `UPDATE cash_transactions
        SET status = 'approved',
            verified_by = ?,
            verified_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
-      [req.session.user.id, id]
-    );
+        [req.session.user.id, id]
+      );
 
-    // ✅ Audit log
-    await runAsync(
-      `INSERT INTO audit_logs (user_id, action, details)
+      /* ======================================================
+       ✅ CREATE MONEY RECEIPT (matches your table columns)
+       ====================================================== */
+      const receiptNo = makeReceiptNo(tx);
+
+      // Create only if not exists for this transaction
+      const existingReceipt = await getAsync(
+        `SELECT id FROM money_receipts WHERE cash_transaction_id = ?`,
+        [tx.id]
+      );
+
+      if (!existingReceipt) {
+        // NOTE: columns assumed:
+        // receipt_no, cash_transaction_id, date, amount, receipt_type, description, created_by, approved_by
+        await runAsync(
+          `
+        INSERT OR IGNORE INTO money_receipts
+          (receipt_no, cash_transaction_id, date, received_from, paid_to,
+          amount, transaction_type, description, created_by, approved_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+          [
+            receiptNo,
+            tx.id,
+            tx.date,
+            tx.transaction_type === "receipt" ? tx.received_from || "" : "",
+            tx.transaction_type === "payment" ? tx.paid_to || "" : "",
+            amt,
+            tx.transaction_type,
+            tx.description || "",
+            tx.created_by || req.session.user.id,
+            req.session.user.id,
+          ]
+        );
+      }
+
+      // ✅ Audit log
+      await runAsync(
+        `INSERT INTO audit_logs (user_id, action, details)
        VALUES (?, ?, ?)`,
-      [req.session.user.id, 'CASH_APPROVE', `Approved cash transaction #${id} and posted ${je.entry_number}`]
-    );
+        [
+          req.session.user.id,
+          "CASH_APPROVE",
+          `Approved cash transaction #${id}, posted ${je.entry_number}, receipt ${receiptNo}`,
+        ]
+      );
 
-    await runAsync('COMMIT');
+      await runAsync("COMMIT");
 
-    return res.json({
-      success: true,
-      message: 'Transaction approved and journal posted',
-      journal_entry_number: je.entry_number,
-      journal_entry_id: je.journal_entry_id
-    });
-  } catch (e) {
-    try { await runAsync('ROLLBACK'); } catch (_) {}
-    console.error('Approve failed:', e);
-    return res.status(500).json({ success: false, error: 'Failed to approve transaction' });
+      return res.json({
+        success: true,
+        message: "Transaction approved, journal posted, receipt created",
+        journal_entry_number: je.entry_number,
+        receipt_no: receiptNo,
+      });
+    } catch (e) {
+      try {
+        await runAsync("ROLLBACK");
+      } catch (_) {}
+      console.error("Approve failed:", e);
+      return res
+        .status(500)
+        .json({ success: false, error: "Failed to approve transaction" });
+    }
   }
-});
+);
 
-router.post('/reject-transaction/:id', requireCashApprover, async (req, res) => {
-  const { id } = req.params;
-  const { reason } = req.body;
+router.post(
+  "/reject-transaction/:id",
+  requireCashApprover,
+  async (req, res) => {
+    const { id } = req.params;
+    const { reason } = req.body;
 
-  try {
-    await runAsync('BEGIN TRANSACTION');
+    try {
+      await runAsync("BEGIN TRANSACTION");
 
-    const tx = await getAsync(`SELECT * FROM cash_transactions WHERE id = ?`, [id]);
-    if (!tx) {
-      await runAsync('ROLLBACK');
-      return res.status(404).json({ success: false, error: 'Transaction not found' });
-    }
-    if (tx.status !== 'pending') {
-      await runAsync('ROLLBACK');
-      return res.status(400).json({ success: false, error: 'Only pending transactions can be rejected' });
-    }
+      const tx = await getAsync(
+        `SELECT * FROM cash_transactions WHERE id = ?`,
+        [id]
+      );
+      if (!tx) {
+        await runAsync("ROLLBACK");
+        return res
+          .status(404)
+          .json({ success: false, error: "Transaction not found" });
+      }
+      if (tx.status !== "pending") {
+        await runAsync("ROLLBACK");
+        return res
+          .status(400)
+          .json({
+            success: false,
+            error: "Only pending transactions can be rejected",
+          });
+      }
 
-    const reasonText = (reason || '').trim();
-    const newNotes = reasonText ? `${tx.notes || ''} | Rejected: ${reasonText}` : (tx.notes || '');
+      const reasonText = (reason || "").trim();
+      const newNotes = reasonText
+        ? `${tx.notes || ""} | Rejected: ${reasonText}`
+        : tx.notes || "";
 
-    await runAsync(
-      `UPDATE cash_transactions
+      await runAsync(
+        `UPDATE cash_transactions
        SET status = 'cancelled',
            verified_by = ?,
            verified_at = CURRENT_TIMESTAMP,
            notes = ?
        WHERE id = ?`,
-      [req.session.user.id, newNotes, id]
-    );
+        [req.session.user.id, newNotes, id]
+      );
 
-    await runAsync(
-      `INSERT INTO audit_logs (user_id, action, details)
+      await runAsync(
+        `INSERT INTO audit_logs (user_id, action, details)
        VALUES (?, ?, ?)`,
-      [req.session.user.id, 'CASH_REJECT', `Rejected cash transaction #${id}`]
-    );
+        [req.session.user.id, "CASH_REJECT", `Rejected cash transaction #${id}`]
+      );
 
-    await runAsync('COMMIT');
+      await runAsync("COMMIT");
 
-    return res.json({ success: true, message: 'Transaction rejected' });
-  } catch (e) {
-    try { await runAsync('ROLLBACK'); } catch (_) {}
-    console.error('Reject failed:', e);
-    return res.status(500).json({ success: false, error: 'Failed to reject transaction' });
+      return res.json({ success: true, message: "Transaction rejected" });
+    } catch (e) {
+      try {
+        await runAsync("ROLLBACK");
+      } catch (_) {}
+      console.error("Reject failed:", e);
+      return res
+        .status(500)
+        .json({ success: false, error: "Failed to reject transaction" });
+    }
   }
-});
+);
 
 // GET /api/cash/transactions?status=approved|cancelled&month=YYYY-MM
-router.get('/transactions', requireCashApprover, async (req, res) => {
+router.get("/transactions", requireCashApprover, async (req, res) => {
   try {
-    const status = (req.query.status || '').trim();
-    const month = (req.query.month || '').trim(); // "2025-12"
+    const status = (req.query.status || "").trim();
+    const month = (req.query.month || "").trim(); // "2025-12"
 
-    if (!['approved', 'cancelled'].includes(status)) {
-      return res.status(400).json({ success: false, error: 'Invalid status' });
+    if (!["approved", "cancelled"].includes(status)) {
+      return res.status(400).json({ success: false, error: "Invalid status" });
     }
 
-    // month filter optional; if provided must be YYYY-MM
     let where = `WHERE ct.status = ?`;
     const params = [status];
 
     if (month) {
       if (!/^\d{4}-\d{2}$/.test(month)) {
-        return res.status(400).json({ success: false, error: 'Invalid month format (use YYYY-MM)' });
+        return res
+          .status(400)
+          .json({
+            success: false,
+            error: "Invalid month format (use YYYY-MM)",
+          });
       }
       where += ` AND ct.date LIKE ?`;
       params.push(`${month}%`);
@@ -324,7 +459,9 @@ router.get('/transactions', requireCashApprover, async (req, res) => {
     res.json({ success: true, transactions: rows });
   } catch (e) {
     console.error(e);
-    res.status(500).json({ success: false, error: 'Failed to fetch transactions' });
+    res
+      .status(500)
+      .json({ success: false, error: "Failed to fetch transactions" });
   }
 });
 

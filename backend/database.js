@@ -149,6 +149,31 @@ CREATE TABLE IF NOT EXISTS accounts (
   FOREIGN KEY (created_by) REFERENCES users(id)
 );
 
+CREATE TABLE IF NOT EXISTS money_receipts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    receipt_no TEXT UNIQUE NOT NULL,
+    cash_transaction_id INTEGER UNIQUE NOT NULL,
+
+    date TEXT NOT NULL,
+    transaction_type TEXT NOT NULL, -- 'receipt' | 'payment'
+    received_from TEXT,
+    paid_to TEXT,
+
+    amount REAL NOT NULL,
+    description TEXT,
+
+    created_by INTEGER,
+    approved_by INTEGER,
+
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    approved_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (cash_transaction_id) REFERENCES cash_transactions(id),
+    FOREIGN KEY (created_by) REFERENCES users(id),
+    FOREIGN KEY (approved_by) REFERENCES users(id)
+);
+
+
 CREATE TABLE IF NOT EXISTS transactions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   transaction_id TEXT UNIQUE NOT NULL,
