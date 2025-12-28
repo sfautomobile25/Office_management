@@ -5,12 +5,20 @@ import {
   Routes,
   Navigate,
 } from "react-router-dom";
+
+import "./App.css";
+
 import Login from "./components/Login";
+import Register from "./components/Register";
+import ForgotPassword from "./components/ForgotPassword";
+
 import Layout from "./components/common/Layout";
+import RequirePerm from "./components/common/RequirePerm";
+import { PERMS } from "./components/common/permissionMap";
+
 import { authAPI } from "./services/api";
 
-
-// Import all admin components
+// Admin components
 import Dashboard from "./components/admin/Dashboard";
 import UserManagement from "./components/admin/UserManagement";
 import PermissionSettings from "./components/admin/PermissionSettings";
@@ -26,18 +34,12 @@ import SecurityMonitor from "./components/admin/SecurityMonitor";
 import PerformanceOptimizer from "./components/admin/PerformanceOptimizer";
 import MultiLanguage from "./components/admin/MultiLanguage";
 import CurrencyConverter from "./components/admin/CurrencyConverter";
-import Register from "./components/Register";
-import ForgotPassword from "./components/ForgotPassword";
+
 import Accounts from "./components/admin/Accounts";
 import CashApproval from "./components/admin/CashApproval";
 import Ledger from "./components/admin/Ledger";
 import ProfitLoss from "./components/admin/ProfitLoss";
 import BalanceSheet from "./components/admin/BalanceSheet";
-import RequirePerm from './components/common/RequirePerm';
-import { PERMS } from './components/common/permissionMap';
-
-
-import "./App.css";
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -46,22 +48,41 @@ function App() {
 
   useEffect(() => {
     checkAuth();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+  if (!isAuthenticated) return;
+
+  const t = setInterval(() => {
+    authAPI.checkSession().catch(() => {});
+  }, 12000);
+
+  return () => clearInterval(t);
+}, [isAuthenticated]);
+
 
   const checkAuth = async () => {
     try {
       const response = await authAPI.checkSession();
-      if (response.data.loggedIn) {
+      if (response.data?.loggedIn) {
         setIsAuthenticated(true);
         setUser(response.data.user);
+
+        // Keep local storage user in sync so RequirePerm/Sidebar can read it
+        if (response.data.user) {
+          localStorage.setItem("user", JSON.stringify(response.data.user));
+        }
       } else {
         setIsAuthenticated(false);
         setUser(null);
+        localStorage.removeItem("user");
       }
     } catch (error) {
       console.error("Auth check failed:", error);
       setIsAuthenticated(false);
       setUser(null);
+      localStorage.removeItem("user");
     } finally {
       setLoading(false);
     }
@@ -70,8 +91,14 @@ function App() {
   const handleLogin = (userData) => {
     setIsAuthenticated(true);
     setUser(userData);
-    if (userData.token) {
+
+    if (userData?.token) {
       localStorage.setItem("token", userData.token);
+    }
+
+    // ✅ store user for permission checks
+    if (userData) {
+      localStorage.setItem("user", JSON.stringify(userData));
     }
   };
 
@@ -84,6 +111,7 @@ function App() {
     setIsAuthenticated(false);
     setUser(null);
     localStorage.removeItem("token");
+    localStorage.removeItem("user");
   };
 
   if (loading) {
@@ -99,6 +127,7 @@ function App() {
     <Router>
       <div className="App">
         <Routes>
+          {/* Public routes */}
           <Route
             path="/login"
             element={
@@ -129,6 +158,8 @@ function App() {
               )
             }
           />
+
+          {/* Admin routes (nested) */}
           <Route
             path="/admin"
             element={
@@ -139,27 +170,181 @@ function App() {
               )
             }
           >
-            <Route path="dashboard" element={<Dashboard user={user} />} />
-            <Route path="users" element={<UserManagement />} />
-            <Route path="permissions" element={<PermissionSettings />} />
-            <Route path="config" element={<SystemConfig />} />
-            <Route path="backup" element={<BackupRestore />} />
-            <Route path="audit-logs" element={<AuditLogs />} />
-            <Route path="data-export" element={<DataImportExport />} />
-            <Route path="database" element={<DatabaseManager />} />
-            <Route path="content" element={<ContentManagement />} />
-            <Route path="seo" element={<SEOTools />} />
-            <Route path="analytics" element={<Analytics />} />
-            <Route path="security" element={<SecurityMonitor />} />
-            <Route path="performance" element={<PerformanceOptimizer />} />
-            <Route path="languages" element={<MultiLanguage />} />
-            <Route path="currency" element={<CurrencyConverter />} />
-            <Route path="accounts" element={<Accounts />} />
+            {/* Dashboard */}
+            <Route
+              path="dashboard"
+              element={
+                <RequirePerm perm={PERMS.DASHBOARD}>
+                  <Dashboard user={user} />
+                </RequirePerm>
+              }
+            />
 
-            {/* default */}
+            {/* User & Permission Management */}
+            <Route
+              path="users"
+              element={
+                <RequirePerm perm={PERMS.USER_MANAGE}>
+                  <UserManagement />
+                </RequirePerm>
+              }
+            />
+            <Route
+              path="permissions"
+              element={
+                <RequirePerm perm={PERMS.USER_MANAGE}>
+                  <PermissionSettings />
+                </RequirePerm>
+              }
+            />
+
+            {/* System/Admin modules */}
+            <Route
+              path="config"
+              element={
+                <RequirePerm perm={PERMS.CONFIG}>
+                  <SystemConfig />
+                </RequirePerm>
+              }
+            />
+            <Route
+              path="backup"
+              element={
+                <RequirePerm perm={PERMS.BACKUP}>
+                  <BackupRestore />
+                </RequirePerm>
+              }
+            />
+            <Route
+              path="audit-logs"
+              element={
+                <RequirePerm perm={PERMS.AUDIT}>
+                  <AuditLogs />
+                </RequirePerm>
+              }
+            />
+            <Route
+              path="data-export"
+              element={
+                <RequirePerm perm={PERMS.DATA}>
+                  <DataImportExport />
+                </RequirePerm>
+              }
+            />
+            <Route
+              path="database"
+              element={
+                <RequirePerm perm={PERMS.DATABASE}>
+                  <DatabaseManager />
+                </RequirePerm>
+              }
+            />
+            <Route
+              path="content"
+              element={
+                <RequirePerm perm={PERMS.CONTENT}>
+                  <ContentManagement />
+                </RequirePerm>
+              }
+            />
+            <Route
+              path="seo"
+              element={
+                <RequirePerm perm={PERMS.SEO}>
+                  <SEOTools />
+                </RequirePerm>
+              }
+            />
+            <Route
+              path="analytics"
+              element={
+                <RequirePerm perm={PERMS.ANALYTICS}>
+                  <Analytics />
+                </RequirePerm>
+              }
+            />
+            <Route
+              path="security"
+              element={
+                <RequirePerm perm={PERMS.SECURITY}>
+                  <SecurityMonitor />
+                </RequirePerm>
+              }
+            />
+            <Route
+              path="performance"
+              element={
+                <RequirePerm perm={PERMS.PERFORMANCE}>
+                  <PerformanceOptimizer />
+                </RequirePerm>
+              }
+            />
+            <Route
+              path="languages"
+              element={
+                <RequirePerm perm={PERMS.LANGUAGE}>
+                  <MultiLanguage />
+                </RequirePerm>
+              }
+            />
+            <Route
+              path="currency"
+              element={
+                <RequirePerm perm={PERMS.CURRENCY}>
+                  <CurrencyConverter />
+                </RequirePerm>
+              }
+            />
+
+            {/* Accounts/Cash */}
+            <Route
+              path="accounts"
+              element={
+                <RequirePerm perm={PERMS.ACCOUNTS}>
+                  <Accounts />
+                </RequirePerm>
+              }
+            />
+            <Route
+              path="cash-approval"
+              element={
+                <RequirePerm perm={PERMS.CASH_APPROVE}>
+                  <CashApproval />
+                </RequirePerm>
+              }
+            />
+
+            {/* Reports */}
+            <Route
+              path="ledger"
+              element={
+                <RequirePerm perm={PERMS.REPORTS}>
+                  <Ledger />
+                </RequirePerm>
+              }
+            />
+            <Route
+              path="profit-loss"
+              element={
+                <RequirePerm perm={PERMS.REPORTS}>
+                  <ProfitLoss />
+                </RequirePerm>
+              }
+            />
+            <Route
+              path="balance-sheet"
+              element={
+                <RequirePerm perm={PERMS.REPORTS}>
+                  <BalanceSheet />
+                </RequirePerm>
+              }
+            />
+
+            {/* default inside /admin */}
             <Route index element={<Navigate to="dashboard" replace />} />
           </Route>
 
+          {/* Root redirect */}
           <Route
             path="/"
             element={
@@ -170,6 +355,7 @@ function App() {
             }
           />
 
+          {/* Catch-all */}
           <Route
             path="*"
             element={

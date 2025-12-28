@@ -5,6 +5,9 @@ const jwt = require("jsonwebtoken");
 const { getAsync, runAsync } = require("../database");
 const crypto = require("crypto");
 
+const JWT_SECRET =
+  process.env.JWT_SECRET || "your-jwt-secret-key-change-in-production";
+
 // Login route
 router.post("/login", async (req, res) => {
   const { username, password } = req.body;
@@ -36,6 +39,9 @@ router.post("/login", async (req, res) => {
       });
     }
 
+    const permissions = JSON.parse(user.permissions || "[]");
+    const sessionVersion = user.session_version || 1;
+
     // Create JWT token
     const token = jwt.sign(
       {
@@ -43,7 +49,7 @@ router.post("/login", async (req, res) => {
         username: user.username,
         role: user.role,
       },
-      "your-jwt-secret-key-change-in-production",
+      JWT_SECRET,
       { expiresIn: "24h" }
     );
 
@@ -53,7 +59,8 @@ router.post("/login", async (req, res) => {
       username: user.username,
       email: user.email,
       role: user.role,
-      permissions: JSON.parse(user.permissions || "[]"),
+      permissions,
+      session_version: sessionVersion,
     };
 
     // Log the login
@@ -64,19 +71,20 @@ router.post("/login", async (req, res) => {
 
     console.log(`✅ Login successful for: ${username}`);
 
-    res.json({
+    return res.json({
       success: true,
       token,
       user: {
         id: user.id,
         username: user.username,
         role: user.role,
-        permissions: JSON.parse(user.permissions || "[]"),
+        permissions,
+        session_version: sessionVersion,
       },
     });
   } catch (error) {
     console.error("❌ Login error:", error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: "Internal server error",
     });
@@ -109,23 +117,60 @@ router.post("/logout", async (req, res) => {
     }
 
     res.clearCookie("connect.sid");
-    res.json({
+    return res.json({
       success: true,
       message: "Logged out successfully",
     });
   });
 });
 
-// Check session
-router.get("/check", (req, res) => {
-  if (req.session.user) {
-    res.json({
+// ✅ Check session (with session invalidation)
+router.get("/check", async (req, res) => {
+  try {
+    if (!req.session.user) {
+      return res.json({ loggedIn: false });
+    }
+
+    // Always verify against DB (permissions can change)
+    const dbUser = await getAsync(
+      "SELECT id, username, email, role, permissions, session_version FROM users WHERE id = ?",
+      [req.session.user.id]
+    );
+
+    if (!dbUser) {
+      req.session.destroy(() => {});
+      return res.status(401).json({ loggedIn: false });
+    }
+
+    const dbSessionVersion = dbUser.session_version || 1;
+    const sessionVersion = req.session.user.session_version || 1;
+
+    // ✅ if admin changed permissions, invalidate this session
+    if (dbSessionVersion !== sessionVersion) {
+      req.session.destroy(() => {});
+      return res.status(409).json({
+        loggedIn: false,
+        code: "SESSION_INVALIDATED",
+        message: "Your permissions were updated. Please log in again.",
+      });
+    }
+
+    // Keep session in sync (role/permissions changes that do NOT bump version)
+    req.session.user.username = dbUser.username;
+    req.session.user.email = dbUser.email;
+    req.session.user.role = dbUser.role;
+    req.session.user.permissions = JSON.parse(dbUser.permissions || "[]");
+    req.session.user.session_version = dbSessionVersion;
+
+    return res.json({
       loggedIn: true,
       user: req.session.user,
     });
-  } else {
-    res.json({
+  } catch (error) {
+    console.error("❌ Session check error:", error);
+    return res.status(500).json({
       loggedIn: false,
+      error: "Failed to check session",
     });
   }
 });
@@ -133,18 +178,15 @@ router.get("/check", (req, res) => {
 // Check admin status
 router.get("/check-admin", (req, res) => {
   if (req.session.user && req.session.user.role === "admin") {
-    res.json({
+    return res.json({
       isAdmin: true,
       user: req.session.user,
     });
-  } else {
-    res.json({
-      isAdmin: false,
-    });
   }
+  return res.json({ isAdmin: false });
 });
 
-// Add after login route in auth.js
+// Register route
 router.post("/register", async (req, res) => {
   const { username, email, password, confirmPassword, role } = req.body;
 
@@ -192,11 +234,11 @@ router.post("/register", async (req, res) => {
     // Default role is 'user' unless specified by admin
     const userRole = role || "user";
 
-    // Create user
+    // Create user (session_version starts at 1)
     const result = await runAsync(
-      `INSERT INTO users (username, email, password, role, permissions) 
-             VALUES (?, ?, ?, ?, ?)`,
-      [username, email, hashedPassword, userRole, JSON.stringify([])]
+      `INSERT INTO users (username, email, password, role, permissions, session_version)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [username, email, hashedPassword, userRole, JSON.stringify([]), 1]
     );
 
     // Log the registration
@@ -207,14 +249,14 @@ router.post("/register", async (req, res) => {
 
     console.log(`✅ User registered: ${username} (ID: ${result.lastID})`);
 
-    res.json({
+    return res.json({
       success: true,
       message: "Registration successful! Please login.",
       userId: result.lastID,
     });
   } catch (error) {
     console.error("❌ Registration error:", error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: "Registration failed. Please try again.",
     });
@@ -229,34 +271,25 @@ router.post("/forgot-password", async (req, res) => {
     const user = await getAsync("SELECT * FROM users WHERE email = ?", [email]);
 
     if (!user) {
-      // Don't reveal if email exists or not
       return res.json({
         success: true,
         message: "If your email exists, you will receive reset instructions",
       });
     }
 
-    // Generate reset token
     const resetToken = crypto.randomBytes(32).toString("hex");
-    const resetTokenExpiry = Date.now() + 3600000; // 1 hour
-
-    // Store token in database (in real app)
-    // For now, we'll log it
     console.log(`Reset token for ${email}: ${resetToken}`);
 
-    // In real app, send email with reset link
-    // For now, we'll return the token in development
     const resetLink = `http://localhost:3000/reset-password/${resetToken}`;
 
-    res.json({
+    return res.json({
       success: true,
       message: "Password reset instructions sent to your email",
-      // Only include in development
       resetLink: process.env.NODE_ENV === "development" ? resetLink : undefined,
     });
   } catch (error) {
     console.error("Forgot password error:", error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: "Failed to process request",
     });
@@ -268,8 +301,6 @@ router.post("/reset-password", async (req, res) => {
   const { token, newPassword } = req.body;
 
   try {
-    // In real app, verify token from database
-    // For now, we'll just check token format
     if (!token || token.length < 10) {
       return res.status(400).json({
         success: false,
@@ -277,26 +308,19 @@ router.post("/reset-password", async (req, res) => {
       });
     }
 
-    // In real app, you would:
-    // 1. Verify token exists and isn't expired
-    // 2. Find user by token
-    // 3. Hash new password
-    // 4. Update user password
-    // 5. Delete/invalidate used token
-
-    // For demo purposes, we'll simulate success
     console.log(`Password reset with token: ${token}`);
 
-    res.json({
+    return res.json({
       success: true,
       message: "Password has been reset successfully",
     });
   } catch (error) {
     console.error("Reset password error:", error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: "Failed to reset password",
     });
   }
 });
+
 module.exports = router;

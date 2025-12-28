@@ -70,15 +70,18 @@ async function withRetry(fn, retries = 20, baseDelay = 80) {
 }
 
 const createTablesSQL = `
+
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  username TEXT UNIQUE NOT NULL,
-  email TEXT UNIQUE NOT NULL,
-  password TEXT NOT NULL,
+  username TEXT UNIQUE,
+  email TEXT UNIQUE,
+  password TEXT,
   role TEXT DEFAULT 'user',
   permissions TEXT DEFAULT '[]',
+  session_version INTEGER DEFAULT 1,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
 
 CREATE TABLE IF NOT EXISTS system_config (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -464,19 +467,31 @@ async function init() {
     return true;
   })();
 
+  // ✅ Add session_version column if missing (safe migration)
+await runAsync(`ALTER TABLE users ADD COLUMN session_version INTEGER DEFAULT 1`)
+  .catch(() => {});
+
+
   return initPromise;
 }
+
+
+
+
 
 // Public helpers (also retry on SQLITE_BUSY)
 async function runAsync(sql, params = []) {
   await init();
   return withRetry(() => runRawAsync(sql, params));
+  
 }
 
 async function getAsync(sql, params = []) {
   await init();
   return withRetry(() => getRawAsync(sql, params));
 }
+
+
 
 async function allAsync(sql, params = []) {
   await init();

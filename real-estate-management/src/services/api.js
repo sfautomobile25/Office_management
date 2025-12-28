@@ -30,6 +30,21 @@ API.interceptors.response.use(
   }
 );
 
+API.interceptors.response.use(
+  (res) => res,
+  (error) => {
+    const status = error?.response?.status;
+    const code = error?.response?.data?.code;
+
+    if (status === 401 || (status === 409 && code === "SESSION_INVALIDATED")) {
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      window.location.href = "/login";
+    }
+    return Promise.reject(error);
+  }
+);
+
 // Auth API
 export const authAPI = {
   login: (credentials) => API.post("/auth/login", credentials),
@@ -190,11 +205,11 @@ export const receiptsAPI = {
 };
 
 export const userManagementAPI = {
-  getUsers: () => API.get('/user-management/users'),
-  createUser: (userData) => API.post('/user-management/users', userData),
-  updateUser: (id, userData) => API.put(`/user-management/users/${id}`, userData),
-  deleteUser: (id) => API.delete(`/user-management/users/${id}`)
+  getUsers: () => API.get("/user-management/users"),
+  createUser: (userData) => API.post("/user-management/users", userData),
+  updateUser: (id, userData) =>
+    API.put(`/user-management/users/${id}`, userData),
+  deleteUser: (id) => API.delete(`/user-management/users/${id}`),
 };
-
 
 export default API;
