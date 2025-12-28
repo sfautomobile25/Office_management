@@ -681,7 +681,8 @@ router.get('/money-receipts', async (req, res) => {
       FROM money_receipts mr
       JOIN cash_transactions ct ON ct.id = mr.cash_transaction_id
       WHERE mr.date = ?
-      ORDER BY mr.created_at DESC
+      ORDER BY mr.created_at DESC, mr.id DESC
+
       `,
       [date]
     );
