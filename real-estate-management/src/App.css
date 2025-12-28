@@ -5225,4 +5225,20 @@ input:checked + .switch-slider:before {
 }
 
 
+.badge {
+  margin-left: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  background: #ff3b30;
+  color: #fff;
+  line-height: 18px;
+  min-width: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+
 

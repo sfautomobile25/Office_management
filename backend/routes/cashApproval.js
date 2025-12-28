@@ -465,4 +465,20 @@ router.get("/transactions", requireCashApprover, async (req, res) => {
   }
 });
 
+// GET /api/cash/pending-count
+
+router.get('/pending-count', requireCashApprover, async (req, res) => {
+  try {
+    const row = await getAsync(
+      `SELECT COUNT(*) AS count FROM cash_transactions WHERE status = 'pending'`
+    );
+    res.json({ success: true, count: Number(row?.count || 0) });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ success: false, error: 'Failed to fetch pending count' });
+  }
+});
+
+
+
 module.exports = router;
