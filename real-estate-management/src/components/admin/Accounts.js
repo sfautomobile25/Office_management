@@ -1,16 +1,15 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { accountsAPI, cashManagementAPI } from "../../services/api";
-import { receiptsAPI } from "../../services/api";
-import ReceiptModal from "./ReceiptModal";
 
 function Accounts() {
-  const getDhakaTodayISO = () => {
+  // ---------- Helpers ----------
+  const getDhakaISODate = (date = new Date()) => {
     const parts = new Intl.DateTimeFormat("en-CA", {
       timeZone: "Asia/Dhaka",
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
-    }).formatToParts(new Date());
+    }).formatToParts(date);
 
     const y = parts.find((p) => p.type === "year")?.value;
     const m = parts.find((p) => p.type === "month")?.value;
@@ -18,37 +17,73 @@ function Accounts() {
     return `${y}-${m}-${d}`;
   };
 
+  const formatBDT = (value) =>
+    new Intl.NumberFormat("en-BD", {
+      style: "currency",
+      currency: "BDT",
+      maximumFractionDigits: 2,
+    }).format(Number(value || 0));
+
+  const dhakaNowLabel = useMemo(() => {
+    return new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Asia/Dhaka",
+      year: "numeric",
+      month: "short",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    }).format(new Date());
+  }, []);
+
+  // ---------- UI State ----------
   const [activeTab, setActiveTab] = useState("dashboard");
   const [loading, setLoading] = useState(false);
 
-  // New states for cash management
+  // Dashboard data
   const [cashPosition, setCashPosition] = useState(null);
-  const [dailyTransactions, setDailyTransactions] = useState([]);
   const [dailySummary, setDailySummary] = useState([]);
-  const [expenseAnalysis, setExpenseAnalysis] = useState(null);
+
+  // Daily transactions
+  const [selectedDate, setSelectedDate] = useState(getDhakaISODate());
+  const [dailyTransactions, setDailyTransactions] = useState([]);
+
+  // Balance sheet
+  const [dailyBalance, setDailyBalance] = useState({
+    date: getDhakaISODate(),
+    opening_balance: "",
+    cash_received: "",
+    cash_paid: "",
+  });
   const [recentBalances, setRecentBalances] = useState([]);
   const [recentBalancesLoading, setRecentBalancesLoading] = useState(false);
   const [recentBalancesError, setRecentBalancesError] = useState("");
-  // Expense analysis UI states
+
+  // Expense analysis
   const [expensePeriod, setExpensePeriod] = useState("month");
+  const [expenseAnalysis, setExpenseAnalysis] = useState(null);
   const [expenseLoading, setExpenseLoading] = useState(false);
   const [expenseError, setExpenseError] = useState("");
-  const [ledgerPeriod, setLedgerPeriod] = useState("monthly"); // monthly|quarterly|yearly
+
+  // Ledger export
+  const [ledgerPeriod, setLedgerPeriod] = useState("monthly");
   const [ledgerYear, setLedgerYear] = useState(new Date().getFullYear());
-  const [ledgerMonth, setLedgerMonth] = useState(new Date().getMonth() + 1); // 1-12
-  const [ledgerQuarter, setLedgerQuarter] = useState(1); // 1-4
+  const [ledgerMonth, setLedgerMonth] = useState(new Date().getMonth() + 1);
+  const [ledgerQuarter, setLedgerQuarter] = useState(1);
   const [ledgerDownloading, setLedgerDownloading] = useState(false);
-  const [reportDate, setReportDate] = useState(getDhakaTodayISO());
+
+  // Report download
+  const [reportDate, setReportDate] = useState(getDhakaISODate());
   const [reportLoading, setReportLoading] = useState(false);
-  const [dailyReceipts, setDailyReceipts] = useState([]);
+
+  // Receipt modal
   const [receiptModalOpen, setReceiptModalOpen] = useState(false);
-  const [selectedReceipt, setSelectedReceipt] = useState(null);
   const [receiptLoading, setReceiptLoading] = useState(false);
   const [receiptData, setReceiptData] = useState(null);
 
-  // Form states
+  // New transaction form
   const [newCashTransaction, setNewCashTransaction] = useState({
-    date: new Date().toISOString().split("T")[0],
+    date: getDhakaISODate(),
     time: new Date().toTimeString().split(" ")[0].substring(0, 5),
     description: "",
     amount: "",
@@ -61,25 +96,128 @@ function Accounts() {
     notes: "",
   });
 
-  const [dailyBalance, setDailyBalance] = useState({
-    date: new Date().toISOString().split("T")[0],
-    opening_balance: "",
-    cash_received: "",
-    cash_paid: "",
-  });
+  // ---------- Data loaders ----------
+  const loadDashboard = async () => {
+    const [positionRes, summaryRes] = await Promise.all([
+      cashManagementAPI.getCashPosition(),
+      cashManagementAPI.getDailySummary({ limit: 7 }),
+    ]);
+
+    if (positionRes.data?.success) setCashPosition(positionRes.data.cashPosition);
+
+    if (summaryRes.data?.success) {
+      const summaries = summaryRes.data.summaries || [];
+      if (summaries.length === 0) {
+        // auto-generate summary if empty
+        try {
+          await cashManagementAPI.generateDailySummary();
+          const refreshed = await cashManagementAPI.getDailySummary({ limit: 7 });
+          setDailySummary(refreshed.data?.summaries || []);
+        } catch (e) {
+          console.error("Auto-generate daily summary failed:", e);
+          setDailySummary([]);
+        }
+      } else {
+        setDailySummary(summaries);
+      }
+    } else {
+      setDailySummary([]);
+    }
+  };
+
+  const loadDailyTransactions = async (date) => {
+    // shows approved receipts with view/print
+    const res = await cashManagementAPI.getMoneyReceipts({ date });
+    if (res.data?.success) {
+      // backend should already return newest first; we still enforce sort by created/approved
+      const rows = res.data.receipts || [];
+      rows.sort((a, b) => (b.id || 0) - (a.id || 0));
+      setDailyTransactions(rows);
+    } else {
+      setDailyTransactions([]);
+    }
+  };
+
+  const loadExpenseAnalysis = async (period = expensePeriod) => {
+    setExpenseError("");
+    setExpenseLoading(true);
+    try {
+      const res = await cashManagementAPI.getExpenseAnalysis({ period });
+      if (res.data?.success) setExpenseAnalysis(res.data);
+      else setExpenseAnalysis(null);
+    } catch (err) {
+      setExpenseAnalysis(null);
+      setExpenseError(err.response?.data?.error || "Failed to load expense analysis");
+    } finally {
+      setExpenseLoading(false);
+    }
+  };
+
+  const loadRecentDailyBalances = async () => {
+    try {
+      setRecentBalancesError("");
+      setRecentBalancesLoading(true);
+
+      const end = new Date();
+      const start = new Date();
+      start.setDate(start.getDate() - 30);
+
+      const res = await cashManagementAPI.getDailyCash({
+        start_date: getDhakaISODate(start),
+        end_date: getDhakaISODate(end),
+      });
+
+      if (res.data?.success) setRecentBalances(res.data.balances || []);
+      else {
+        setRecentBalances([]);
+        setRecentBalancesError(res.data?.error || "Failed to load recent balances");
+      }
+    } catch (err) {
+      setRecentBalances([]);
+      setRecentBalancesError(err.response?.data?.error || "Failed to load recent balances");
+    } finally {
+      setRecentBalancesLoading(false);
+    }
+  };
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      if (activeTab === "dashboard") await loadDashboard();
+      if (activeTab === "daily-transactions") await loadDailyTransactions(selectedDate);
+      if (activeTab === "expenses") await loadExpenseAnalysis(expensePeriod);
+    } catch (e) {
+      console.error("fetchData error:", e);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
-  const openReceipt = async (id) => {
+  // Reload daily list when date changes (only in that tab)
+  useEffect(() => {
+    if (activeTab !== "daily-transactions") return;
+    loadDailyTransactions(selectedDate).catch(console.error);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDate, activeTab]);
+
+  // ---------- Receipt modal actions ----------
+  const openReceipt = async (cashTransactionId) => {
     try {
       setReceiptLoading(true);
       setReceiptData(null);
       setReceiptModalOpen(true);
 
-      const res = await cashManagementAPI.getMoneyReceipt(id);
+      const res = await cashManagementAPI.getMoneyReceipt(cashTransactionId);
       if (res.data?.success) setReceiptData(res.data.receipt);
+      else {
+        alert(res.data?.error || "Receipt not found");
+        setReceiptModalOpen(false);
+      }
     } catch (e) {
       alert(e.response?.data?.error || "Failed to load receipt");
       setReceiptModalOpen(false);
@@ -95,14 +233,14 @@ function Accounts() {
     const printWindow = window.open("", "PRINT", "height=650,width=900");
     printWindow.document.write(`<html><head><title>Money Receipt</title>`);
     printWindow.document.write(`<style>
-    body { font-family: Arial, sans-serif; padding: 20px; }
-    .box { border: 1px solid #ddd; padding: 16px; border-radius: 10px; }
-    .row { display:flex; justify-content:space-between; gap:12px; margin: 8px 0; }
-    .title { font-size: 18px; font-weight: 700; margin-bottom: 10px; }
-    .muted { color:#666; font-size: 12px; }
-    .amount { font-size: 20px; font-weight: 800; margin-top: 10px; }
-    hr { border:none; border-top: 1px solid #eee; margin: 12px 0; }
-  </style></head><body>`);
+      body { font-family: Arial, sans-serif; padding: 20px; }
+      .box { border: 1px solid #ddd; padding: 16px; border-radius: 10px; }
+      .row { display:flex; justify-content:space-between; gap:12px; margin: 8px 0; flex-wrap: wrap; }
+      .title { font-size: 18px; font-weight: 700; margin-bottom: 10px; }
+      .muted { color:#666; font-size: 12px; }
+      .amount { font-size: 20px; font-weight: 800; margin-top: 10px; }
+      hr { border:none; border-top: 1px solid #eee; margin: 12px 0; }
+    </style></head><body>`);
     printWindow.document.write(el.innerHTML);
     printWindow.document.write(`</body></html>`);
     printWindow.document.close();
@@ -111,12 +249,11 @@ function Accounts() {
     printWindow.close();
   };
 
+  // ---------- Actions ----------
   const generateDailyReport = async () => {
     try {
       setReportLoading(true);
-      const res = await cashManagementAPI.downloadDailyReport({
-        date: reportDate,
-      });
+      const res = await cashManagementAPI.downloadDailyReport({ date: reportDate });
 
       const blob = new Blob([res.data], {
         type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -130,22 +267,10 @@ function Accounts() {
       a.click();
       a.remove();
       window.URL.revokeObjectURL(url);
-
-      // your existing message/toast can stay:
-      // setMessage('Report generated and downloaded');
     } catch (e) {
       alert(e.response?.data?.error || "Failed to generate report");
     } finally {
       setReportLoading(false);
-    }
-  };
-
-  const loadExpenseAnalysis = async (period = expensePeriod) => {
-    try {
-      const res = await cashManagementAPI.getExpenseAnalysis({ period });
-      if (res.data?.success) setExpenseAnalysis(res.data);
-    } catch (err) {
-      console.error("Error fetching expense analysis:", err);
     }
   };
 
@@ -188,99 +313,21 @@ function Accounts() {
     }
   };
 
-  const getDhakaDateString = (date = new Date()) => {
-    // Always format date as YYYY-MM-DD in Asia/Dhaka
-    const parts = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Asia/Dhaka",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).formatToParts(date);
-
-    const y = parts.find((p) => p.type === "year")?.value;
-    const m = parts.find((p) => p.type === "month")?.value;
-    const d = parts.find((p) => p.type === "day")?.value;
-    return `${y}-${m}-${d}`;
-  };
-
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      if (activeTab === "dashboard") {
-        const [positionRes, summaryRes] = await Promise.all([
-          cashManagementAPI.getCashPosition(),
-          cashManagementAPI.getDailySummary({ limit: 7 }),
-        ]);
-
-        if (positionRes.data?.success)
-          setCashPosition(positionRes.data.cashPosition);
-
-        if (summaryRes.data?.success) {
-          const summaries = summaryRes.data.summaries || [];
-
-          // ✅ Auto-generate if empty
-          if (summaries.length === 0) {
-            try {
-              await cashManagementAPI.generateDailySummary(); // creates today's (or latest) summary in DB
-              const refreshed = await cashManagementAPI.getDailySummary({
-                limit: 7,
-              });
-              if (refreshed.data?.success)
-                setDailySummary(refreshed.data.summaries || []);
-              else setDailySummary([]);
-            } catch (e) {
-              console.error("Auto-generate daily summary failed:", e);
-              setDailySummary([]);
-            }
-          } else {
-            setDailySummary(summaries);
-          }
-        } else {
-          setDailySummary([]);
-        }
-      }
-
-      if (activeTab === "daily-transactions") {
-        const today = getDhakaDateString(); // ✅ Dhaka date
-        const transactionsRes = await cashManagementAPI.getCashTransactions({
-          date: today,
-        });
-        if (transactionsRes.data?.success) {
-          setDailyTransactions(transactionsRes.data.transactions || []);
-        } else {
-          setDailyTransactions([]);
-        }
-        const receiptsRes = await cashManagementAPI.getMoneyReceipts({
-          date: today,
-        });
-        if (receiptsRes.data?.success) {
-          setDailyTransactions(receiptsRes.data.receipts || []);
-        } else {
-          setDailyTransactions([]);
-        }
-      }
-
-      if (activeTab === "expenses") {
-        // ✅ loads whatever period user selected
-        await loadExpenseAnalysis(expensePeriod);
-      }
-    } catch (error) {
-      console.error("Error fetching data:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleCashTransaction = async (e) => {
     e.preventDefault();
     try {
-      const response = await cashManagementAPI.createCashTransaction(
-        newCashTransaction
-      );
-      if (response.data.success) {
+      // Ensure date matches selectedDate
+      const payload = {
+        ...newCashTransaction,
+        date: selectedDate,
+      };
+
+      const response = await cashManagementAPI.createCashTransaction(payload);
+      if (response.data?.success) {
         alert("Cash transaction recorded!");
-        setNewCashTransaction({
-          date: new Date().toISOString().split("T")[0],
+        setNewCashTransaction((prev) => ({
+          ...prev,
+          date: selectedDate,
           time: new Date().toTimeString().split(" ")[0].substring(0, 5),
           description: "",
           amount: "",
@@ -291,95 +338,42 @@ function Accounts() {
           received_from: "",
           paid_to: "",
           notes: "",
-        });
-        fetchData();
+        }));
+
+        // Reload list for selectedDate
+        await loadDailyTransactions(selectedDate);
+      } else {
+        alert(response.data?.error || "Failed to record transaction");
       }
     } catch (error) {
       console.error("Error recording transaction:", error);
-      alert("Failed to record transaction");
+      alert(error.response?.data?.error || "Failed to record transaction");
     }
   };
 
   const updateDailyBalance = async () => {
     try {
       const response = await cashManagementAPI.updateDailyBalance(dailyBalance);
-      if (response.data.success) {
+      if (response.data?.success) {
         alert("Daily balance updated!");
-        fetchData();
+        // Optional: refresh balances
+        await loadRecentDailyBalances();
+        // refresh dashboard too
+        if (activeTab === "dashboard") await loadDashboard();
+      } else {
+        alert(response.data?.error || "Failed to update balance");
       }
     } catch (error) {
       console.error("Error updating balance:", error);
-      alert("Failed to update balance");
+      alert(error.response?.data?.error || "Failed to update balance");
     }
   };
 
-  const loadRecentDailyBalances = async () => {
-    try {
-      setRecentBalancesError("");
-      setRecentBalancesLoading(true);
-
-      // last 30 days (Dhaka time)
-      const end = new Date();
-      const start = new Date();
-      start.setDate(start.getDate() - 30);
-
-      const params = {
-        start_date: getDhakaDateString(start),
-        end_date: getDhakaDateString(end),
-      };
-
-      const res = await cashManagementAPI.getDailyCash(params);
-
-      if (res.data?.success) {
-        // backend returns balances ordered DESC by date already
-        setRecentBalances(res.data.balances || []);
-      } else {
-        setRecentBalances([]);
-        setRecentBalancesError(
-          res.data?.error || "Failed to load recent balances"
-        );
-      }
-    } catch (err) {
-      setRecentBalances([]);
-      setRecentBalancesError(
-        err.response?.data?.error || "Failed to load recent balances"
-      );
-    } finally {
-      setRecentBalancesLoading(false);
-    }
-  };
-
+  // ---------- Renders ----------
   const renderDashboard = () => {
     if (!cashPosition) return null;
 
-    const {
-      today,
-      yesterday,
-      dailyChange,
-      weeklyFlow,
-      monthlyFlow,
-      todayTransactions,
-    } = cashPosition;
-
-    // Dhaka date-time label
-    const dhakaNowLabel = new Intl.DateTimeFormat("en-GB", {
-      timeZone: "Asia/Dhaka",
-      year: "numeric",
-      month: "short",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true,
-    }).format(new Date());
-
-    // BDT formatter
-    const formatBDT = (value) =>
-      new Intl.NumberFormat("en-BD", {
-        style: "currency",
-        currency: "BDT",
-        maximumFractionDigits: 2,
-      }).format(Number(value || 0));
-
+    const { today, dailyChange, weeklyFlow, monthlyFlow, todayTransactions } = cashPosition;
     const todayBalance = Number(today?.closing_balance || 0);
     const change = Number(dailyChange || 0);
 
@@ -388,17 +382,17 @@ function Accounts() {
         <div className="dashboard-header">
           <h3>📊 Cash Flow Dashboard</h3>
           <div className="dashboard-actions">
-            <button
-              className="btn-primary"
-              onClick={generateDailyReport}
-              disabled={reportLoading}
-            >
-              {reportLoading ? "Generating..." : "Generate Daily Report"}
-            </button>
-            <button
-              className="btn-secondary"
-              onClick={() => setActiveTab("daily-transactions")}
-            >
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <input
+                type="date"
+                value={reportDate}
+                onChange={(e) => setReportDate(e.target.value)}
+              />
+              <button className="btn-primary" onClick={generateDailyReport} disabled={reportLoading}>
+                {reportLoading ? "Generating..." : "Generate Daily Report"}
+              </button>
+            </div>
+            <button className="btn-secondary" onClick={() => setActiveTab("daily-transactions")}>
               Record Transaction
             </button>
           </div>
@@ -412,9 +406,7 @@ function Accounts() {
             </div>
             <div className="card-body">
               <div className="cash-amount">{formatBDT(todayBalance)}</div>
-              <div
-                className={formatBDT`cash-change {change >= 0 ? 'positive' : 'negative'}`}
-              >
+              <div className={`cash-change ${change >= 0 ? "positive" : "negative"}`}>
                 {change >= 0 ? "↗" : "↘"} {formatBDT(Math.abs(change))}
                 <span> from yesterday</span>
               </div>
@@ -433,15 +425,11 @@ function Accounts() {
                 </div>
                 <div className="activity-item">
                   <span className="label">Cash In:</span>
-                  <span className="value positive">
-                    {formatBDT(todayTransactions?.receipts || 0)}
-                  </span>
+                  <span className="value positive">{formatBDT(todayTransactions?.receipts || 0)}</span>
                 </div>
                 <div className="activity-item">
                   <span className="label">Cash Out:</span>
-                  <span className="value negative">
-                    {formatBDT(todayTransactions?.payments || 0)}
-                  </span>
+                  <span className="value negative">{formatBDT(todayTransactions?.payments || 0)}</span>
                 </div>
               </div>
             </div>
@@ -455,23 +443,15 @@ function Accounts() {
               <div className="flow-stats">
                 <div className="flow-item">
                   <span className="label">In:</span>
-                  <span className="value">
-                    {formatBDT(weeklyFlow?.in || 0)}
-                  </span>
+                  <span className="value">{formatBDT(weeklyFlow?.in || 0)}</span>
                 </div>
                 <div className="flow-item">
                   <span className="label">Out:</span>
-                  <span className="value">
-                    {formatBDT(weeklyFlow?.out || 0)}
-                  </span>
+                  <span className="value">{formatBDT(weeklyFlow?.out || 0)}</span>
                 </div>
                 <div className="flow-item total">
                   <span className="label">Net:</span>
-                  <span
-                    className={`value ${
-                      (weeklyFlow?.net || 0) >= 0 ? "positive" : "negative"
-                    }`}
-                  >
+                  <span className={`value ${(weeklyFlow?.net || 0) >= 0 ? "positive" : "negative"}`}>
                     {formatBDT(weeklyFlow?.net || 0)}
                   </span>
                 </div>
@@ -487,23 +467,15 @@ function Accounts() {
               <div className="flow-stats">
                 <div className="flow-item">
                   <span className="label">In:</span>
-                  <span className="value">
-                    {formatBDT(monthlyFlow?.in || 0)}
-                  </span>
+                  <span className="value">{formatBDT(monthlyFlow?.in || 0)}</span>
                 </div>
                 <div className="flow-item">
                   <span className="label">Out:</span>
-                  <span className="value">
-                    {formatBDT(monthlyFlow?.out || 0)}
-                  </span>
+                  <span className="value">{formatBDT(monthlyFlow?.out || 0)}</span>
                 </div>
                 <div className="flow-item total">
                   <span className="label">Net:</span>
-                  <span
-                    className={`value ${
-                      (monthlyFlow?.net || 0) >= 0 ? "positive" : "negative"
-                    }`}
-                  >
+                  <span className={`value ${(monthlyFlow?.net || 0) >= 0 ? "positive" : "negative"}`}>
                     {formatBDT(monthlyFlow?.net || 0)}
                   </span>
                 </div>
@@ -512,7 +484,6 @@ function Accounts() {
           </div>
         </div>
 
-        {/* Keep the rest of your dashboard below as-is */}
         <div className="dashboard-charts">
           <div className="chart-section">
             <h4>Daily Cash Flow (Last 7 Days)</h4>
@@ -520,14 +491,8 @@ function Accounts() {
               {(() => {
                 const last7 = (dailySummary || []).slice(0, 7).reverse();
 
-                const maxIn = Math.max(
-                  1,
-                  ...last7.map((d) => Number(d.total_cash_in || 0))
-                );
-                const maxOut = Math.max(
-                  1,
-                  ...last7.map((d) => Number(d.total_cash_out || 0))
-                );
+                const maxIn = Math.max(1, ...last7.map((d) => Number(d.total_cash_in || 0)));
+                const maxOut = Math.max(1, ...last7.map((d) => Number(d.total_cash_out || 0)));
 
                 return last7.map((day, index) => {
                   const cashIn = Number(day.total_cash_in || 0);
@@ -539,19 +504,16 @@ function Accounts() {
                         <div
                           className="bar in"
                           style={{ height: `${(cashIn / maxIn) * 80}%` }}
-                          title={`In: ৳${cashIn.toFixed(2)}`}
+                          title={`In: ${formatBDT(cashIn)}`}
                         />
                         <div
                           className="bar out"
                           style={{ height: `${(cashOut / maxOut) * 80}%` }}
-                          title={`Out: ৳${cashOut.toFixed(2)}`}
+                          title={`Out: ${formatBDT(cashOut)}`}
                         />
                       </div>
-
                       <div className="chart-label">
-                        {new Date(day.date).toLocaleDateString("en-US", {
-                          weekday: "short",
-                        })}
+                        {new Date(day.date).toLocaleDateString("en-US", { weekday: "short" })}
                       </div>
                     </div>
                   );
@@ -568,8 +530,12 @@ function Accounts() {
     <div className="daily-transactions-tab">
       <div className="page-header">
         <h3>💵 Daily Cash Transactions</h3>
-        <div className="header-actions">
-          <button className="btn-secondary" onClick={fetchData}>
+        <div className="header-actions" style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <span className="text-muted">Date:</span>
+            <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} />
+          </div>
+          <button className="btn-secondary" onClick={() => loadDailyTransactions(selectedDate)}>
             Refresh
           </button>
         </div>
@@ -582,29 +548,14 @@ function Accounts() {
             <div className="form-row">
               <div className="form-group">
                 <label>Date *</label>
-                <input
-                  type="date"
-                  value={newCashTransaction.date}
-                  onChange={(e) =>
-                    setNewCashTransaction({
-                      ...newCashTransaction,
-                      date: e.target.value,
-                    })
-                  }
-                  required
-                />
+                <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} />
               </div>
               <div className="form-group">
                 <label>Time *</label>
                 <input
                   type="time"
                   value={newCashTransaction.time}
-                  onChange={(e) =>
-                    setNewCashTransaction({
-                      ...newCashTransaction,
-                      time: e.target.value,
-                    })
-                  }
+                  onChange={(e) => setNewCashTransaction({ ...newCashTransaction, time: e.target.value })}
                   required
                 />
               </div>
@@ -615,12 +566,7 @@ function Accounts() {
               <input
                 type="text"
                 value={newCashTransaction.description}
-                onChange={(e) =>
-                  setNewCashTransaction({
-                    ...newCashTransaction,
-                    description: e.target.value,
-                  })
-                }
+                onChange={(e) => setNewCashTransaction({ ...newCashTransaction, description: e.target.value })}
                 placeholder="Enter transaction description"
                 required
               />
@@ -628,31 +574,22 @@ function Accounts() {
 
             <div className="form-row">
               <div className="form-group">
-                <label>Amount *</label>
+                <label>Amount (BDT) *</label>
                 <input
                   type="number"
                   step="0.01"
                   value={newCashTransaction.amount}
-                  onChange={(e) =>
-                    setNewCashTransaction({
-                      ...newCashTransaction,
-                      amount: e.target.value,
-                    })
-                  }
+                  onChange={(e) => setNewCashTransaction({ ...newCashTransaction, amount: e.target.value })}
                   placeholder="0.00"
                   required
                 />
               </div>
+
               <div className="form-group">
                 <label>Transaction Type *</label>
                 <select
                   value={newCashTransaction.transaction_type}
-                  onChange={(e) =>
-                    setNewCashTransaction({
-                      ...newCashTransaction,
-                      transaction_type: e.target.value,
-                    })
-                  }
+                  onChange={(e) => setNewCashTransaction({ ...newCashTransaction, transaction_type: e.target.value })}
                   required
                 >
                   <option value="receipt">Receipt (Cash In)</option>
@@ -667,12 +604,7 @@ function Accounts() {
                 <label>Category *</label>
                 <select
                   value={newCashTransaction.category}
-                  onChange={(e) =>
-                    setNewCashTransaction({
-                      ...newCashTransaction,
-                      category: e.target.value,
-                    })
-                  }
+                  onChange={(e) => setNewCashTransaction({ ...newCashTransaction, category: e.target.value })}
                   required
                 >
                   <option value="">Select Category</option>
@@ -685,16 +617,12 @@ function Accounts() {
                   <option value="Other">Other</option>
                 </select>
               </div>
+
               <div className="form-group">
                 <label>Payment Method *</label>
                 <select
                   value={newCashTransaction.payment_method}
-                  onChange={(e) =>
-                    setNewCashTransaction({
-                      ...newCashTransaction,
-                      payment_method: e.target.value,
-                    })
-                  }
+                  onChange={(e) => setNewCashTransaction({ ...newCashTransaction, payment_method: e.target.value })}
                   required
                 >
                   <option value="cash">Cash</option>
@@ -711,12 +639,7 @@ function Accounts() {
                 <input
                   type="text"
                   value={newCashTransaction.received_from}
-                  onChange={(e) =>
-                    setNewCashTransaction({
-                      ...newCashTransaction,
-                      received_from: e.target.value,
-                    })
-                  }
+                  onChange={(e) => setNewCashTransaction({ ...newCashTransaction, received_from: e.target.value })}
                   placeholder="Name of payer"
                 />
               </div>
@@ -728,12 +651,7 @@ function Accounts() {
                 <input
                   type="text"
                   value={newCashTransaction.paid_to}
-                  onChange={(e) =>
-                    setNewCashTransaction({
-                      ...newCashTransaction,
-                      paid_to: e.target.value,
-                    })
-                  }
+                  onChange={(e) => setNewCashTransaction({ ...newCashTransaction, paid_to: e.target.value })}
                   placeholder="Name of payee"
                 />
               </div>
@@ -744,12 +662,7 @@ function Accounts() {
               <input
                 type="text"
                 value={newCashTransaction.reference_number}
-                onChange={(e) =>
-                  setNewCashTransaction({
-                    ...newCashTransaction,
-                    reference_number: e.target.value,
-                  })
-                }
+                onChange={(e) => setNewCashTransaction({ ...newCashTransaction, reference_number: e.target.value })}
                 placeholder="Receipt/Check number"
               />
             </div>
@@ -758,12 +671,7 @@ function Accounts() {
               <label>Notes</label>
               <textarea
                 value={newCashTransaction.notes}
-                onChange={(e) =>
-                  setNewCashTransaction({
-                    ...newCashTransaction,
-                    notes: e.target.value,
-                  })
-                }
+                onChange={(e) => setNewCashTransaction({ ...newCashTransaction, notes: e.target.value })}
                 placeholder="Additional notes"
                 rows="3"
               />
@@ -776,16 +684,16 @@ function Accounts() {
         </div>
 
         <div className="transactions-list-section">
-          <h4>Today's Transactions</h4>
+          <h4>Approved Transactions ({selectedDate})</h4>
           <div className="table-container">
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Time</th>
+                  <th>Date</th>
+                  <th>Receipt No</th>
                   <th>Description</th>
                   <th>Type</th>
-                  <th>Amount</th>
-                  <th>Category</th>
+                  <th>Amount (BDT)</th>
                   <th>Status</th>
                   <th>View</th>
                   <th>Print</th>
@@ -794,48 +702,34 @@ function Accounts() {
               <tbody>
                 {dailyTransactions.map((r) => (
                   <tr key={r.id}>
-                    <td>{r.time}</td>
+                    <td>{r.date || selectedDate}</td>
+                    <td>{r.receipt_no || "-"}</td>
                     <td>
                       <div className="transaction-description">
-                        {r.description}
+                        {r.description || "-"}
                         {r.reference_number && (
-                          <div className="text-muted">
-                            Ref: {r.reference_number}
-                          </div>
+                          <div className="text-muted">Ref: {r.reference_number}</div>
                         )}
                       </div>
                     </td>
                     <td>
-                      <span
-                        className={`transaction-type ${r.transaction_type}`}
-                      >
-                        {r.transaction_type}
+                      <span className={`transaction-type ${r.receipt_type || r.transaction_type || ""}`}>
+                        {r.receipt_type || r.transaction_type || "-"}
                       </span>
                     </td>
                     <td>
-                      <span
-                        className={`amount ${
-                          r.transaction_type === "receipt"
-                            ? "positive"
-                            : "negative"
-                        }`}
-                      >
-                        {r.transaction_type === "receipt" ? "+" : "-"}$
-                        {parseFloat(r.amount).toFixed(2)}
-                      </span>
-                    </td>
-                    <td>{r.category}</td>
-                    <td>
-                      <span className={`status-badge ${r.status}`}>
-                        {r.status}
+                      <span className={`amount ${(r.receipt_type || r.transaction_type) === "receipt" ? "positive" : "negative"}`}>
+                        {(r.receipt_type || r.transaction_type) === "receipt" ? "+" : "-"}
+                        {formatBDT(r.amount)}
                       </span>
                     </td>
                     <td>
-                      <button
-                        className="btn-secondary"
-                        onClick={() => openReceipt(r.id)}
-                        title="View"
-                      >
+                      <span className={`status-badge ${r.status || "approved"}`}>
+                        {r.status || "approved"}
+                      </span>
+                    </td>
+                    <td>
+                      <button className="btn-secondary" onClick={() => openReceipt(r.cash_transaction_id || r.id)} title="View">
                         👁️
                       </button>
                     </td>
@@ -843,7 +737,7 @@ function Accounts() {
                       <button
                         className="btn-secondary"
                         onClick={async () => {
-                          await openReceipt(r.id);
+                          await openReceipt(r.cash_transaction_id || r.id);
                           setTimeout(printReceipt, 200);
                         }}
                         title="Print"
@@ -860,7 +754,7 @@ function Accounts() {
 
           {dailyTransactions.length === 0 && (
             <div className="empty-state">
-              <p>No transactions recorded today.</p>
+              <p>No approved transactions found for {selectedDate}.</p>
             </div>
           )}
         </div>
@@ -883,27 +777,17 @@ function Accounts() {
               <input
                 type="date"
                 value={dailyBalance.date}
-                onChange={(e) =>
-                  setDailyBalance({
-                    ...dailyBalance,
-                    date: e.target.value,
-                  })
-                }
+                onChange={(e) => setDailyBalance({ ...dailyBalance, date: e.target.value })}
                 required
               />
             </div>
             <div className="form-group">
-              <label>Opening Balance *</label>
+              <label>Opening Balance (BDT) *</label>
               <input
                 type="number"
                 step="0.01"
                 value={dailyBalance.opening_balance}
-                onChange={(e) =>
-                  setDailyBalance({
-                    ...dailyBalance,
-                    opening_balance: e.target.value,
-                  })
-                }
+                onChange={(e) => setDailyBalance({ ...dailyBalance, opening_balance: e.target.value })}
                 placeholder="0.00"
                 required
               />
@@ -912,32 +796,22 @@ function Accounts() {
 
           <div className="form-row">
             <div className="form-group">
-              <label>Cash Received Today</label>
+              <label>Cash Received Today (BDT)</label>
               <input
                 type="number"
                 step="0.01"
                 value={dailyBalance.cash_received}
-                onChange={(e) =>
-                  setDailyBalance({
-                    ...dailyBalance,
-                    cash_received: e.target.value,
-                  })
-                }
+                onChange={(e) => setDailyBalance({ ...dailyBalance, cash_received: e.target.value })}
                 placeholder="0.00"
               />
             </div>
             <div className="form-group">
-              <label>Cash Paid Today</label>
+              <label>Cash Paid Today (BDT)</label>
               <input
                 type="number"
                 step="0.01"
                 value={dailyBalance.cash_paid}
-                onChange={(e) =>
-                  setDailyBalance({
-                    ...dailyBalance,
-                    cash_paid: e.target.value,
-                  })
-                }
+                onChange={(e) => setDailyBalance({ ...dailyBalance, cash_paid: e.target.value })}
                 placeholder="0.00"
               />
             </div>
@@ -947,32 +821,24 @@ function Accounts() {
             <h5>Balance Preview:</h5>
             <div className="preview-item">
               <span>Opening Balance:</span>
-              <span>
-                {" "}
-                {parseFloat(dailyBalance.opening_balance || 0).toFixed(2)}
-              </span>
+              <span>{formatBDT(dailyBalance.opening_balance)}</span>
             </div>
             <div className="preview-item">
               <span>Add: Cash Received:</span>
-              <span className="positive">
-                + {parseFloat(dailyBalance.cash_received || 0).toFixed(2)}
-              </span>
+              <span className="positive">+ {formatBDT(dailyBalance.cash_received)}</span>
             </div>
             <div className="preview-item">
               <span>Less: Cash Paid:</span>
-              <span className="negative">
-                - {parseFloat(dailyBalance.cash_paid || 0).toFixed(2)}
-              </span>
+              <span className="negative">- {formatBDT(dailyBalance.cash_paid)}</span>
             </div>
             <div className="preview-item total">
               <span>Closing Balance:</span>
               <span className="total-amount">
-                BDT{" "}
-                {(
-                  parseFloat(dailyBalance.opening_balance || 0) +
-                  parseFloat(dailyBalance.cash_received || 0) -
-                  parseFloat(dailyBalance.cash_paid || 0)
-                ).toFixed(2)}
+                {formatBDT(
+                  Number(dailyBalance.opening_balance || 0) +
+                    Number(dailyBalance.cash_received || 0) -
+                    Number(dailyBalance.cash_paid || 0)
+                )}
               </span>
             </div>
           </div>
@@ -983,17 +849,18 @@ function Accounts() {
         </div>
 
         <div className="recent-balances">
+          <div className="recent-balance-toolbar">
+            <button
+              className="btn-secondary"
+              onClick={loadRecentDailyBalances}
+              disabled={recentBalancesLoading}
+            >
+              {recentBalancesLoading ? "Refreshing..." : "Refresh"}
+            </button>
+          </div>
+
           <h4>Recent Daily Balances</h4>
           <div className="table-container">
-            <div className="recent-balance-toolbar">
-              <button
-                className="btn-secondary"
-                onClick={loadRecentDailyBalances}
-                disabled={recentBalancesLoading}
-              >
-                {recentBalancesLoading ? "Refreshing..." : "Refresh"}
-              </button>
-            </div>
             <table className="data-table">
               <thead>
                 <tr>
@@ -1007,11 +874,7 @@ function Accounts() {
               <tbody>
                 {recentBalancesError && (
                   <tr>
-                    <td
-                      colSpan="5"
-                      className="text-center"
-                      style={{ color: "#f56565" }}
-                    >
+                    <td colSpan="5" className="text-center" style={{ color: "#f56565" }}>
                       {recentBalancesError}
                     </td>
                   </tr>
@@ -1020,37 +883,22 @@ function Accounts() {
                 {!recentBalancesError && recentBalances.length === 0 && (
                   <tr>
                     <td colSpan="5" className="text-center">
-                      <button
-                        className="btn-secondary"
-                        onClick={loadRecentDailyBalances}
-                        disabled={recentBalancesLoading}
-                      >
-                        {recentBalancesLoading
-                          ? "Loading..."
-                          : "Load Recent Balances"}
+                      <button className="btn-secondary" onClick={loadRecentDailyBalances} disabled={recentBalancesLoading}>
+                        {recentBalancesLoading ? "Loading..." : "Load Recent Balances"}
                       </button>
                     </td>
                   </tr>
                 )}
 
-                {recentBalances.length > 0 &&
-                  recentBalances.map((b) => (
-                    <tr key={b.date}>
-                      <td>{b.date}</td>
-                      <td className="text-right">
-                        ৳{parseFloat(b.opening_balance || 0).toFixed(2)}
-                      </td>
-                      <td className="text-right">
-                        ৳{parseFloat(b.cash_received || 0).toFixed(2)}
-                      </td>
-                      <td className="text-right">
-                        ৳{parseFloat(b.cash_paid || 0).toFixed(2)}
-                      </td>
-                      <td className="text-right">
-                        ৳{parseFloat(b.closing_balance || 0).toFixed(2)}
-                      </td>
-                    </tr>
-                  ))}
+                {recentBalances.map((b) => (
+                  <tr key={b.date}>
+                    <td>{b.date}</td>
+                    <td className="text-right">{formatBDT(b.opening_balance)}</td>
+                    <td className="text-right">{formatBDT(b.cash_received)}</td>
+                    <td className="text-right">{formatBDT(b.cash_paid)}</td>
+                    <td className="text-right">{formatBDT(b.closing_balance)}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -1058,15 +906,13 @@ function Accounts() {
       </div>
     </div>
   );
+
   const renderReport = () => (
     <div className="card">
       <h3>📥 Ledger Export (Excel)</h3>
 
       <div className="ledger-export-controls">
-        <select
-          value={ledgerPeriod}
-          onChange={(e) => setLedgerPeriod(e.target.value)}
-        >
+        <select value={ledgerPeriod} onChange={(e) => setLedgerPeriod(e.target.value)}>
           <option value="monthly">Monthly</option>
           <option value="quarterly">Quarterly</option>
           <option value="yearly">Yearly</option>
@@ -1082,10 +928,7 @@ function Accounts() {
         />
 
         {ledgerPeriod === "monthly" && (
-          <select
-            value={ledgerMonth}
-            onChange={(e) => setLedgerMonth(Number(e.target.value))}
-          >
+          <select value={ledgerMonth} onChange={(e) => setLedgerMonth(Number(e.target.value))}>
             {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
               <option key={m} value={m}>
                 {String(m).padStart(2, "0")}
@@ -1095,10 +938,7 @@ function Accounts() {
         )}
 
         {ledgerPeriod === "quarterly" && (
-          <select
-            value={ledgerQuarter}
-            onChange={(e) => setLedgerQuarter(Number(e.target.value))}
-          >
+          <select value={ledgerQuarter} onChange={(e) => setLedgerQuarter(Number(e.target.value))}>
             <option value={1}>Q1</option>
             <option value={2}>Q2</option>
             <option value={3}>Q3</option>
@@ -1106,32 +946,26 @@ function Accounts() {
           </select>
         )}
 
-        <button
-          className="btn-primary"
-          onClick={downloadLedgerExcel}
-          disabled={ledgerDownloading}
-        >
+        <button className="btn-primary" onClick={downloadLedgerExcel} disabled={ledgerDownloading}>
           {ledgerDownloading ? "Preparing..." : "Download Excel"}
         </button>
       </div>
 
       <div className="text-muted" style={{ marginTop: 10 }}>
-        Export includes Summary + per-account running ledger. Time shown in
-        Asia/Dhaka.
+        Export includes Summary + per-account running ledger. Time shown in Asia/Dhaka. Currency: BDT.
       </div>
     </div>
   );
 
   const renderExpenseAnalysis = () => {
-    // Allow UI to render even if null (so we can show loading/error nicely)
     const totals = expenseAnalysis?.totals || { budget: 0, spent: 0, count: 0 };
+    const budget = parseFloat(totals.budget || 0);
+    const spent = parseFloat(totals.spent || 0);
     const varianceValue =
       typeof expenseAnalysis?.variance === "number"
         ? expenseAnalysis.variance
-        : parseFloat(totals.budget || 0) - parseFloat(totals.spent || 0);
+        : budget - spent;
 
-    const budget = parseFloat(totals.budget || 0);
-    const spent = parseFloat(totals.spent || 0);
     const usagePct = budget > 0 ? (spent / budget) * 100 : 0;
 
     return (
@@ -1154,11 +988,7 @@ function Accounts() {
               <option value="year">This Year</option>
             </select>
 
-            <button
-              className="btn-secondary"
-              onClick={() => loadExpenseAnalysis(expensePeriod)}
-              disabled={expenseLoading}
-            >
+            <button className="btn-secondary" onClick={() => loadExpenseAnalysis(expensePeriod)} disabled={expenseLoading}>
               {expenseLoading ? "Refreshing..." : "Refresh"}
             </button>
           </div>
@@ -1177,23 +1007,18 @@ function Accounts() {
             <div className="overview-stats">
               <div className="stat-item">
                 <span className="label">Budget</span>
-                <span className="value">৳ {budget.toFixed(2)}</span>
+                <span className="value">{formatBDT(budget)}</span>
               </div>
 
               <div className="stat-item">
                 <span className="label">Spent</span>
-                <span className="value">৳ {spent.toFixed(2)}</span>
+                <span className="value">{formatBDT(spent)}</span>
               </div>
 
               <div className="stat-item">
                 <span className="label">Variance</span>
-                <span
-                  className={`value variance ${
-                    varianceValue >= 0 ? "positive" : "negative"
-                  }`}
-                >
-                  ৳ {Math.abs(varianceValue).toFixed(2)}{" "}
-                  {varianceValue >= 0 ? "under" : "over"}
+                <span className={`value variance ${varianceValue >= 0 ? "positive" : "negative"}`}>
+                  {formatBDT(Math.abs(varianceValue))} {varianceValue >= 0 ? "under" : "over"}
                 </span>
               </div>
 
@@ -1201,10 +1026,7 @@ function Accounts() {
                 <span className="label">Usage</span>
                 <div className="usage-row">
                   <div className="usage-track">
-                    <div
-                      className="usage-fill"
-                      style={{ width: `${Math.min(usagePct, 100)}%` }}
-                    />
+                    <div className="usage-fill" style={{ width: `${Math.min(usagePct, 100)}%` }} />
                   </div>
                   <span className="usage-text">{usagePct.toFixed(1)}%</span>
                 </div>
@@ -1252,35 +1074,24 @@ function Accounts() {
                   const b = parseFloat(expense.budget_amount || 0);
                   const a = parseFloat(expense.actual_spent || 0);
                   const variance = b - a;
-
                   const percent = spent > 0 ? (a / spent) * 100 : 0;
 
                   return (
                     <tr key={index}>
                       <td>{expense.category_name}</td>
-                      <td>৳ {b.toFixed(2)}</td>
-                      <td>৳ {a.toFixed(2)}</td>
+                      <td>{formatBDT(b)}</td>
+                      <td>{formatBDT(a)}</td>
                       <td>
-                        <span
-                          className={`variance ${
-                            variance >= 0 ? "positive" : "negative"
-                          }`}
-                        >
-                          ৳ {Math.abs(variance).toFixed(2)}{" "}
-                          {variance >= 0 ? "under" : "over"}
+                        <span className={`variance ${variance >= 0 ? "positive" : "negative"}`}>
+                          {formatBDT(Math.abs(variance))} {variance >= 0 ? "under" : "over"}
                         </span>
                       </td>
                       <td>
                         <div className="percentage-ui">
                           <div className="percentage-track">
-                            <div
-                              className="percentage-fill"
-                              style={{ width: `${Math.min(percent, 100)}%` }}
-                            />
+                            <div className="percentage-fill" style={{ width: `${Math.min(percent, 100)}%` }} />
                           </div>
-                          <span className="percentage-text">
-                            {percent.toFixed(1)}%
-                          </span>
+                          <span className="percentage-text">{percent.toFixed(1)}%</span>
                         </div>
                       </td>
                       <td>{expense.transaction_count}</td>
@@ -1294,31 +1105,24 @@ function Accounts() {
       </div>
     );
   };
+
   return (
     <div className="accounts-management">
       <div className="page-header">
         <h2>💰 Accounts & Cash Management</h2>
         <div className="accounts-quick-actions">
-          <button
-            className="btn-primary"
-            onClick={() => setActiveTab("daily-transactions")}
-          >
+          <button className="btn-primary" onClick={() => setActiveTab("daily-transactions")}>
             + Quick Transaction
           </button>
         </div>
       </div>
 
       <div className="accounts-tabs">
-        <button
-          className={`tab ${activeTab === "dashboard" ? "active" : ""}`}
-          onClick={() => setActiveTab("dashboard")}
-        >
+        <button className={`tab ${activeTab === "dashboard" ? "active" : ""}`} onClick={() => setActiveTab("dashboard")}>
           📊 Dashboard
         </button>
         <button
-          className={`tab ${
-            activeTab === "daily-transactions" ? "active" : ""
-          }`}
+          className={`tab ${activeTab === "daily-transactions" ? "active" : ""}`}
           onClick={() => setActiveTab("daily-transactions")}
         >
           💵 Daily Transactions
@@ -1329,23 +1133,11 @@ function Accounts() {
         >
           📋 Balance Sheet
         </button>
-        <button
-          className={`tab ${activeTab === "expenses" ? "active" : ""}`}
-          onClick={() => setActiveTab("expenses")}
-        >
+        <button className={`tab ${activeTab === "expenses" ? "active" : ""}`} onClick={() => setActiveTab("expenses")}>
           📊 Expense Analysis
         </button>
-        <button
-          className={`tab ${activeTab === "reports" ? "active" : ""}`}
-          onClick={() => setActiveTab("reports")}
-        >
+        <button className={`tab ${activeTab === "reports" ? "active" : ""}`} onClick={() => setActiveTab("reports")}>
           📈 Reports
-        </button>
-        <button
-          className={`tab ${activeTab === "accounts" ? "active" : ""}`}
-          onClick={() => setActiveTab("accounts")}
-        >
-          🏦 Chart of Accounts
         </button>
       </div>
 
@@ -1360,38 +1152,18 @@ function Accounts() {
           {activeTab === "reports" && renderReport()}
         </>
       )}
-      <ReceiptModal
-        open={receiptModalOpen}
-        onClose={() => setReceiptModalOpen(false)}
-        receipt={selectedReceipt}
-        onPrint={printReceipt}
-      />
+
+      {/* Receipt Modal */}
       {receiptModalOpen && (
-        <div
-          className="modal-overlay"
-          onClick={() => setReceiptModalOpen(false)}
-        >
+        <div className="modal-overlay" onClick={() => setReceiptModalOpen(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                gap: 12,
-              }}
-            >
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
               <h3 style={{ margin: 0 }}>Money Receipt</h3>
               <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  className="btn-secondary"
-                  onClick={printReceipt}
-                  disabled={!receiptData || receiptLoading}
-                >
+                <button className="btn-secondary" onClick={printReceipt} disabled={!receiptData || receiptLoading}>
                   🖨️ Print
                 </button>
-                <button
-                  className="btn-secondary"
-                  onClick={() => setReceiptModalOpen(false)}
-                >
+                <button className="btn-secondary" onClick={() => setReceiptModalOpen(false)}>
                   ✖
                 </button>
               </div>
@@ -1403,9 +1175,7 @@ function Accounts() {
               {receiptData && (
                 <div id="receipt-print-area" className="box">
                   <div className="title">Money Receipt</div>
-                  <div className="muted">
-                    Timezone: Asia/Dhaka • Currency: BDT
-                  </div>
+                  <div className="muted">Timezone: Asia/Dhaka • Currency: BDT</div>
                   <hr />
 
                   <div className="row">
@@ -1419,10 +1189,10 @@ function Accounts() {
 
                   <div className="row">
                     <div>
-                      <b>Type:</b> {receiptData.receipt_type}
+                      <b>Type:</b> {receiptData.receipt_type || "-"}
                     </div>
                     <div>
-                      <b>Transaction ID:</b> {receiptData.transaction_id}
+                      <b>Transaction ID:</b> {receiptData.transaction_id || "-"}
                     </div>
                   </div>
 
@@ -1432,23 +1202,15 @@ function Accounts() {
                     </div>
                   </div>
 
-                  <div className="amount">
-                    Amount: ৳ {Number(receiptData.amount || 0).toFixed(2)}
-                  </div>
+                  <div className="amount">Amount: {formatBDT(receiptData.amount)}</div>
 
                   <hr />
                   <div className="row">
                     <div>
-                      <b>Created By:</b>{" "}
-                      {receiptData.created_by_name ||
-                        receiptData.created_by ||
-                        "-"}
+                      <b>Created By:</b> {receiptData.created_by_name || receiptData.created_by || "-"}
                     </div>
                     <div>
-                      <b>Approved By:</b>{" "}
-                      {receiptData.approved_by_name ||
-                        receiptData.approved_by ||
-                        "-"}
+                      <b>Approved By:</b> {receiptData.approved_by_name || receiptData.approved_by || "-"}
                     </div>
                   </div>
 
@@ -1464,4 +1226,5 @@ function Accounts() {
     </div>
   );
 }
+
 export default Accounts;

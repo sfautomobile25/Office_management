@@ -33,6 +33,9 @@ function UserManagement() {
     "seo_manage",
     "analytics_view",
     "security_view",
+    "dashboard_view",
+    "accounts_view",
+    "reports_view"
   ];
 
   useEffect(() => {
