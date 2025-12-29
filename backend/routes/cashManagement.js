@@ -30,43 +30,47 @@ function requireReportAccess(req, res, next) {
 // Get daily cash balance
 router.get('/daily-cash', async (req, res) => {
   try {
-    const { date } = req.query;
+    const { date, start_date, end_date } = req.query;
 
-    if (!date) {
-      return res.status(400).json({
-        success: false,
-        error: 'Date is required'
-      });
+    // Debug (so you can see what server receives)
+    console.log('[daily-cash] query:', req.query);
+
+    // Validate format YYYY-MM-DD (only if provided)
+    const isISO = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
+
+    if (date && !isISO(date)) {
+      return res.status(400).json({ success: false, error: "Invalid date format (use YYYY-MM-DD)" });
+    }
+    if (start_date && !isISO(start_date)) {
+      return res.status(400).json({ success: false, error: "Invalid start_date format (use YYYY-MM-DD)" });
+    }
+    if (end_date && !isISO(end_date)) {
+      return res.status(400).json({ success: false, error: "Invalid end_date format (use YYYY-MM-DD)" });
     }
 
-    const rows = await allAsync(
-      `
-      SELECT
-        ct.id,
-        ct.transaction_id,
-        ct.date,
-        ct.amount,
-        ct.transaction_type,
-        ct.description,
-        ct.verified_at,
-        mr.receipt_no
-      FROM cash_transactions ct
-      LEFT JOIN money_receipts mr
-        ON mr.cash_transaction_id = ct.id
-      WHERE ct.status = 'approved'
-        AND ct.date = ?
-      ORDER BY ct.verified_at DESC, ct.id DESC
-      `,
-      [date]
-    );
+    // Accept: date OR (start_date + end_date) OR nothing (return latest)
+    let query = 'SELECT * FROM daily_cash_balance WHERE 1=1';
+    const params = [];
 
-    res.json({ success: true, transactions: rows });
-  } catch (error) {
-    console.error('Daily transactions error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to load daily transactions'
+    if (date) {
+      query += ' AND date = ?';
+      params.push(date);
+    } else if (start_date && end_date) {
+      query += ' AND date BETWEEN ? AND ?';
+      params.push(start_date, end_date);
+    }
+
+    query += ' ORDER BY date DESC';
+
+    const balances = await allAsync(query, params);
+
+    return res.json({
+      success: true,
+      balances: balances || []
     });
+  } catch (error) {
+    console.error('Error fetching daily cash:', error);
+    return res.status(500).json({ success: false, error: 'Failed to fetch daily cash' });
   }
 });
 
