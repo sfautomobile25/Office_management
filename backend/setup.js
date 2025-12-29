@@ -2,9 +2,17 @@ const sqlite3 = require("sqlite3").verbose();
 const bcrypt = require("bcryptjs");
 const path = require("path");
 
-// Create database connection
-const dbPath = path.join(__dirname, "database.sqlite");
+// Create database connection run in localhost}}}}}}}
+// const dbPath = path.join(__dirname, "database.sqlite");
+// const db = new sqlite3.Database(dbPath);
+
+const dbPath =
+  process.env.SQLITE_PATH || path.join(process.cwd(), "data", "app.db");
+
+fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+
 const db = new sqlite3.Database(dbPath);
+export default db;
 
 console.log("Setting up database at:", dbPath);
 
