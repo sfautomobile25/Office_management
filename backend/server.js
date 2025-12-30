@@ -58,8 +58,13 @@ app.use('/api/receipts', receiptsRoutes);
 app.use('/api/user-management', userManagementRoutes);
 
 
-// Start server
-app.listen(PORT, () => {
-    console.log(`✅ Server running on http://localhost:${PORT}`);
-    console.log(`📊 Test: http://localhost:${PORT}/api/test`);
+// // Start server
+// app.listen(PORT, () => {
+//     console.log(`✅ Server running on http://localhost:${PORT}`);
+//     console.log(`📊 Test: http://localhost:${PORT}/api/test`);
+// });
+
+// in render
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Server running on port ${PORT}`);
 });
