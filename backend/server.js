@@ -1,14 +1,15 @@
 const express = require("express");
 const cors = require("cors");
 const session = require("express-session");
-const SQLiteStore = require("connect-sqlite3")(session);
-const { db } = require("./database");
+const PgSession = require("connect-pg-simple")(session);
 const app = express();
 const PORT = process.env.PORT || 5000;
 const path = require("path");
 const fs = require("fs");
 
 require("dotenv").config();
+
+const { db } = require("./database");
 
 
 const SESSION_DIR = process.env.SESSION_DB_DIR || path.join(__dirname, "data");
@@ -28,9 +29,10 @@ app.use(express.urlencoded({ extended: true }));
 // Session configuration
 app.use(
   session({
-    store: new SQLiteStore({
-      db: "sessions.sqlite",
-      dir: SESSION_DIR,
+    store: new PgSession({
+      pool: db,
+      tableName: "session",
+      createTableIfMissing: true,
     }),
     secret: process.env.SESSION_SECRET || "local_secret",
     resave: false,

@@ -391,31 +391,38 @@ router.get('/export/logs', async (req, res) => {
 // Database Management - Get Table Info
 router.get('/database/tables', async (req, res) => {
     try {
+        // List public tables (Postgres)
         const tables = await allAsync(
-            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+            `SELECT table_name AS name
+             FROM information_schema.tables
+             WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+             ORDER BY table_name`
         );
-        
+
         const tableInfo = [];
         for (const table of tables) {
-            const info = await allAsync(`PRAGMA table_info(${table.name})`);
-            const count = await getAsync(`SELECT COUNT(*) as count FROM ${table.name}`);
-            
+            const cols = await allAsync(
+                `SELECT column_name, data_type, is_nullable, column_default
+                 FROM information_schema.columns
+                 WHERE table_schema = 'public' AND table_name = ?
+                 ORDER BY ordinal_position`,
+                [table.name]
+            );
+
+            const countRow = await getAsync(`SELECT COUNT(*)::int AS count FROM ${table.name}`);
             tableInfo.push({
                 name: table.name,
-                columns: info,
-                rowCount: count.count
+                columns: cols,
+                rowCount: countRow ? countRow.count : 0
             });
         }
-        
-        res.json({
-            success: true,
-            tables: tableInfo
-        });
+
+        res.json({ success: true, tables: tableInfo });
     } catch (error) {
         console.error('Error fetching table info:', error);
-        res.status(500).json({ 
+        res.status(500).json({
             success: false,
-            error: 'Failed to fetch table information' 
+            error: 'Failed to fetch table information'
         });
     }
 });
@@ -466,9 +473,14 @@ router.post('/content', async (req, res) => {
     
     try {
         await runAsync(
-            `INSERT OR REPLACE INTO website_content 
-             (page_name, content, seo_title, seo_description, seo_keywords, language)
-             VALUES (?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO website_content (page_name, content, seo_title, seo_description, seo_keywords, language)
+             VALUES (?, ?, ?, ?, ?, ?)
+             ON CONFLICT (page_name, language) DO UPDATE SET
+               content = EXCLUDED.content,
+               seo_title = EXCLUDED.seo_title,
+               seo_description = EXCLUDED.seo_description,
+               seo_keywords = EXCLUDED.seo_keywords,
+               updated_at = CURRENT_TIMESTAMP`,
             [page_name, content, seo_title, seo_description, seo_keywords, language || 'en']
         );
         

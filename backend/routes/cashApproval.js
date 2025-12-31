@@ -195,12 +195,10 @@ router.post(
       }
       if (tx.status !== "pending") {
         await runAsync("ROLLBACK");
-        return res
-          .status(400)
-          .json({
-            success: false,
-            error: "Only pending transactions can be approved",
-          });
+        return res.status(400).json({
+          success: false,
+          error: "Only pending transactions can be approved",
+        });
       }
 
       // ✅ Ensure default accounts exist
@@ -304,10 +302,11 @@ router.post(
         // receipt_no, cash_transaction_id, date, amount, receipt_type, description, created_by, approved_by
         await runAsync(
           `
-        INSERT OR IGNORE INTO money_receipts
+        INSERT INTO money_receipts
           (receipt_no, cash_transaction_id, date, received_from, paid_to,
           amount, transaction_type, description, created_by, approved_by)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT DO NOTHING
         `,
           [
             receiptNo,
@@ -377,12 +376,10 @@ router.post(
       }
       if (tx.status !== "pending") {
         await runAsync("ROLLBACK");
-        return res
-          .status(400)
-          .json({
-            success: false,
-            error: "Only pending transactions can be rejected",
-          });
+        return res.status(400).json({
+          success: false,
+          error: "Only pending transactions can be rejected",
+        });
       }
 
       const reasonText = (reason || "").trim();
@@ -443,8 +440,8 @@ router.get("/transactions", requireCashApprover, async (req, res) => {
             error: "Invalid month format (use YYYY-MM)",
           });
       }
-      where += ` AND ct.date LIKE ?`;
-      params.push(`${month}%`);
+      where += ` AND to_char(ct.date, 'YYYY-MM') = ?`;
+      params.push(month);
     }
 
     const rows = await allAsync(
@@ -467,7 +464,7 @@ router.get("/transactions", requireCashApprover, async (req, res) => {
 
 // GET /api/cash/pending-count
 
-router.get('/pending-count', requireCashApprover, async (req, res) => {
+router.get("/pending-count", requireCashApprover, async (req, res) => {
   try {
     const row = await getAsync(
       `SELECT COUNT(*) AS count FROM cash_transactions WHERE status = 'pending'`
@@ -475,10 +472,10 @@ router.get('/pending-count', requireCashApprover, async (req, res) => {
     res.json({ success: true, count: Number(row?.count || 0) });
   } catch (e) {
     console.error(e);
-    res.status(500).json({ success: false, error: 'Failed to fetch pending count' });
+    res
+      .status(500)
+      .json({ success: false, error: "Failed to fetch pending count" });
   }
 });
-
-
 
 module.exports = router;

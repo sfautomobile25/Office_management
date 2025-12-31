@@ -128,6 +128,8 @@ function Accounts() {
   const loadDailyTransactions = async (date) => {
     // shows approved receipts with view/print
     const res = await cashManagementAPI.getMoneyReceipts({ date });
+    console.log({ receipts: res.data.receipts });
+
     if (res.data?.success) {
       // backend should already return newest first; we still enforce sort by created/approved
       const rows = res.data.receipts || [];
@@ -136,6 +138,7 @@ function Accounts() {
     } else {
       setDailyTransactions([]);
     }
+    
   };
 
   const loadExpenseAnalysis = async (period = expensePeriod) => {

@@ -107,9 +107,17 @@ router.post('/daily-cash', async (req, res) => {
     const closing = opening + received - paid;
 
     await runAsync(
-      `INSERT OR REPLACE INTO daily_cash_balance
+      `INSERT INTO daily_cash_balance
        (date, opening_balance, cash_received, cash_paid, closing_balance)
-       VALUES (?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT (date) DO UPDATE SET
+        opening_balance = EXCLUDED.opening_balance,
+        cash_received = EXCLUDED.cash_received,
+        cash_paid = EXCLUDED.cash_paid,
+        closing_balance = EXCLUDED.closing_balance,
+        reconciled = EXCLUDED.reconciled,
+        reconciled_by = EXCLUDED.reconciled_by,
+        reconciled_at = EXCLUDED.reconciled_at`,
       [date, opening, received, paid, closing]
     );
 
@@ -606,6 +614,10 @@ router.get('/daily-report/export', requireReportAccess, async (req, res) => {
 
 // ---------- Money receipts ----------
 // ✅ List receipts by date
+// ✅ List receipts by date (always return approved items)
+// - First try money_receipts (printable receipts)
+// - If empty, fallback to approved cash_transactions for that date
+
 router.get('/money-receipts', async (req, res) => {
   try {
     if (!req.session?.user) return res.status(401).json({ success: false, error: 'Unauthorized' });
@@ -615,7 +627,8 @@ router.get('/money-receipts', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Invalid date (YYYY-MM-DD)' });
     }
 
-    const rows = await allAsync(
+    // 1) Preferred: actual receipt rows (for view/print)
+    let rows = await allAsync(
       `
       SELECT
         mr.id,
@@ -629,22 +642,51 @@ router.get('/money-receipts', async (req, res) => {
         ct.transaction_id,
         ct.status
       FROM money_receipts mr
-      JOIN cash_transactions ct ON ct.id = mr.cash_transaction_id
+      LEFT JOIN cash_transactions ct ON ct.id = mr.cash_transaction_id
       WHERE mr.date = ?
+        AND (ct.status = 'approved' OR ct.status IS NULL)
       ORDER BY mr.created_at DESC, mr.id DESC
       `,
       [date]
     );
 
-    res.json({ success: true, receipts: rows });
+    // 2) Fallback: if receipt table empty, show approved cash transactions as “daily transactions”
+    if (!rows || rows.length === 0) {
+      const tx = await allAsync(
+        `
+        SELECT
+          ct.id AS cash_transaction_id,
+          ct.date,
+          ct.amount,
+          ct.transaction_type AS receipt_type,
+          ct.description,
+          ct.transaction_id,
+          ct.status,
+          ct.created_at,
+          ('AUTO-' || ct.transaction_id) AS receipt_no
+        FROM cash_transactions ct
+        WHERE ct.date = ?
+          AND ct.status = 'approved'
+        ORDER BY ct.created_at DESC, ct.id DESC
+        `,
+        [date]
+      );
+
+      rows = (tx || []).map((t, i) => ({
+        id: 0 - (i + 1), // negative to avoid conflict with real receipt ids
+        ...t,
+      }));
+    }
+
+    return res.json({ success: true, receipts: rows });
   } catch (e) {
     console.error(e);
-    res.status(500).json({ success: false, error: 'Failed to load receipts' });
+    return res.status(500).json({ success: false, error: 'Failed to load receipts' });
   }
 });
 
 // ✅ Get receipt by RECEIPT ID
-router.get('/money-receipts/id/:id', async (req, res) => {
+router.get('/money-receipts/:id', async (req, res) => {
   try {
     if (!req.session?.user) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
