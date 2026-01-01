@@ -15,7 +15,7 @@ const { db } = require("./database");
 const SESSION_DIR = process.env.SESSION_DB_DIR || path.join(__dirname, "data");
 fs.mkdirSync(SESSION_DIR, { recursive: true });
 
-const ORIGIN = "https://office-management-bthfwln5e-sf-automobiles-projects.vercel.app";
+const ORIGIN = "https://office-management-alpha.vercel.app";
 
 app.set("trust proxy", 1);
 
