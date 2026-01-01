@@ -9,7 +9,7 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // ✅ Use your stable Vercel domain (not deployment URL)
-const ORIGIN = process.env.CORS_ORIGIN || "https://office-management-alpha.vercel.app";
+const ORIGIN = process.env.CORS_ORIGIN;
 
 const isProd = process.env.NODE_ENV === "production";
 
