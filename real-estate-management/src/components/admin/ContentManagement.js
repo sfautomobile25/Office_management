@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { adminAPI } from "../../services/api";
+
 
 function ContentManagement() {
     const [pages, setPages] = useState([]);
