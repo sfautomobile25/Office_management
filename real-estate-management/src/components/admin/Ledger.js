@@ -118,6 +118,7 @@ export default function Ledger() {
         start_date: start,
         end_date: end
       });
+      console.log("LEDGER API RESPONSE:", res.data);
 
       if (res.data?.success) setLedger(res.data);
       else setError(res.data?.error || 'Failed to load ledger');
@@ -147,6 +148,7 @@ export default function Ledger() {
       }
 
       const res = await accountsAPI.downloadLedger(params);
+      
       const blob = new Blob([res.data], {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
       });
@@ -176,6 +178,8 @@ export default function Ledger() {
     if (accountId) loadLedger();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accountId, effectiveRange?.start, effectiveRange?.end]);
+
+  
 
   return (
     <div className="ledger-page">

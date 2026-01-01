@@ -82,6 +82,29 @@ CREATE TABLE IF NOT EXISTS accounts (
   FOREIGN KEY (created_by) REFERENCES users(id)
 );
 
+CREATE TABLE IF NOT EXISTS cash_transactions (
+  id BIGSERIAL PRIMARY KEY,
+  transaction_id TEXT UNIQUE NOT NULL,
+  date DATE NOT NULL,
+  time TIME,
+  description TEXT NOT NULL,
+  amount DECIMAL(15,2) NOT NULL,
+  transaction_type TEXT NOT NULL,
+  category TEXT NOT NULL,
+  payment_method TEXT NOT NULL,
+  reference_number TEXT,
+  received_from TEXT,
+  paid_to TEXT,
+  status TEXT DEFAULT 'pending',
+  verified_by INTEGER,
+  verified_at TIMESTAMP,
+  created_by INTEGER,
+  notes TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (verified_by) REFERENCES users(id),
+  FOREIGN KEY (created_by) REFERENCES users(id)
+);
+
 CREATE TABLE IF NOT EXISTS money_receipts (
     id BIGSERIAL PRIMARY KEY,
     receipt_no TEXT UNIQUE NOT NULL,
@@ -266,28 +289,6 @@ CREATE TABLE IF NOT EXISTS daily_cash_balance (
   FOREIGN KEY (reconciled_by) REFERENCES users(id)
 );
 
-CREATE TABLE IF NOT EXISTS cash_transactions (
-  id BIGSERIAL PRIMARY KEY,
-  transaction_id TEXT UNIQUE NOT NULL,
-  date DATE NOT NULL,
-  time TIME,
-  description TEXT NOT NULL,
-  amount DECIMAL(15,2) NOT NULL,
-  transaction_type TEXT NOT NULL,
-  category TEXT NOT NULL,
-  payment_method TEXT NOT NULL,
-  reference_number TEXT,
-  received_from TEXT,
-  paid_to TEXT,
-  status TEXT DEFAULT 'pending',
-  verified_by INTEGER,
-  verified_at TIMESTAMP,
-  created_by INTEGER,
-  notes TEXT,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (verified_by) REFERENCES users(id),
-  FOREIGN KEY (created_by) REFERENCES users(id)
-);
 
 CREATE TABLE IF NOT EXISTS bank_accounts (
   id BIGSERIAL PRIMARY KEY,
