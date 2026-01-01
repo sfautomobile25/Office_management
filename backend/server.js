@@ -31,19 +31,19 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Session configuration
-app.use(
-  session({
-    store: new PgSession({
-      pool: db,
-      tableName: "session",
-      createTableIfMissing: true,
-    }),
-    secret: process.env.SESSION_SECRET || "local_secret",
-    resave: false,
-    saveUninitialized: false,
-    cookie: { secure: false, maxAge: 24 * 60 * 60 * 1000 },
-  })
-);
+app.use(session({
+  // store: new PgSession({ conString: process.env.DATABASE_URL }), // if you use pg session store
+  secret: process.env.SESSION_SECRET,
+  resave: false,
+  saveUninitialized: false,
+  proxy: true, // ✅ helps behind proxy
+  cookie: {
+    httpOnly: true,
+    secure: true,      // ✅ must be true on HTTPS
+    sameSite: "none",  // ✅ REQUIRED for Vercel -> Render
+    maxAge: 24 * 60 * 60 * 1000,
+  },
+}));
 
 // Simple test endpoint
 app.get("/api/test", (req, res) => {

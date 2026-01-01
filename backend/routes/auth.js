@@ -12,8 +12,6 @@ const JWT_SECRET =
 router.post("/login", async (req, res) => {
   const { username, password } = req.body;
 
-  console.log(`🔑 Login attempt for: ${username}`);
-
   try {
     // Get user from database
     const user = await getAsync("SELECT * FROM users WHERE username = ?", [
