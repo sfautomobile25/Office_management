@@ -89,17 +89,14 @@ router.post("/login", async (req, res) => {
   }
 });
 
-// Logout route
 router.post("/logout", async (req, res) => {
+  const isProd = process.env.NODE_ENV === "production";
+
   if (req.session.user) {
     try {
       await runAsync(
         "INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)",
-        [
-          req.session.user.id,
-          "LOGOUT",
-          `User ${req.session.user.username} logged out`,
-        ]
+        [req.session.user.id, "LOGOUT", `User ${req.session.user.username} logged out`]
       );
     } catch (error) {
       console.error("Error logging logout:", error);
@@ -114,13 +111,21 @@ router.post("/logout", async (req, res) => {
       });
     }
 
-    res.clearCookie("connect.sid");
+    // ✅ Clear cookie with same settings used by session()
+    res.clearCookie("sid", {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: isProd ? "none" : "lax",
+    });
+
     return res.json({
       success: true,
       message: "Logged out successfully",
     });
   });
 });
+
+
 
 // ✅ Check session (with session invalidation)
 router.get("/check", async (req, res) => {

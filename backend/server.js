@@ -1,24 +1,22 @@
+require("dotenv").config();
+
 const express = require("express");
 const cors = require("cors");
 const session = require("express-session");
 const PgSession = require("connect-pg-simple")(session);
+
 const app = express();
 const PORT = process.env.PORT || 5000;
-const path = require("path");
-const fs = require("fs");
 
-require("dotenv").config();
+// ✅ Use your stable Vercel domain (not deployment URL)
+const ORIGIN = process.env.CORS_ORIGIN || "https://office-management-alpha.vercel.app";
 
-const { db } = require("./database");
+const isProd = process.env.NODE_ENV === "production";
 
-
-const SESSION_DIR = process.env.SESSION_DB_DIR || path.join(__dirname, "data");
-fs.mkdirSync(SESSION_DIR, { recursive: true });
-
-const ORIGIN = "https://office-management-alpha.vercel.app";
-
+// ✅ Required on Render behind proxy
 app.set("trust proxy", 1);
 
+// ✅ CORS must allow credentials
 app.use(
   cors({
     origin: ORIGIN,
@@ -30,20 +28,26 @@ app.use(
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Session configuration
-app.use(session({
-  // store: new PgSession({ conString: process.env.DATABASE_URL }), // if you use pg session store
-  secret: process.env.SESSION_SECRET,
-  resave: false,
-  saveUninitialized: false,
-  proxy: true, // ✅ helps behind proxy
-  cookie: {
-    httpOnly: true,
-    secure: true,      // ✅ must be true on HTTPS
-    sameSite: "none",  // ✅ REQUIRED for Vercel -> Render
-    maxAge: 24 * 60 * 60 * 1000,
-  },
-}));
+// ✅ Session config for Vercel <-> Render
+app.use(
+  session({
+    name: "sid", // (optional) clearer than connect.sid
+    store: new PgSession({
+      conString: process.env.DATABASE_URL,
+      createTableIfMissing: true,
+    }),
+    secret: process.env.SESSION_SECRET,
+    resave: false,
+    saveUninitialized: false,
+    proxy: true,
+    cookie: {
+      httpOnly: true,
+      secure: isProd, // ✅ true on Render (https), false locally
+      sameSite: isProd ? "none" : "lax", // ✅ cross-site in production
+      maxAge: 24 * 60 * 60 * 1000,
+    },
+  })
+);
 
 // Simple test endpoint
 app.get("/api/test", (req, res) => {
@@ -56,30 +60,15 @@ app.get("/api/test", (req, res) => {
 app.get("/health", (req, res) => res.status(200).send("ok"));
 
 // Import routes
-const authRoutes = require("./routes/auth");
-const adminRoutes = require("./routes/admin");
-const accountsRoutes = require("./routes/accounts");
-const cashManagementRoutes = require("./routes/cashManagement");
-const cashApprovalRoutes = require("./routes/cashApproval");
-const receiptsRoutes = require("./routes/receipts");
-const userManagementRoutes = require("./routes/userManagement");
+app.use("/api/auth", require("./routes/auth"));
+app.use("/api/admin", require("./routes/admin"));
+app.use("/api/accounts", require("./routes/accounts"));
+app.use("/api/cash", require("./routes/cashManagement"));
+app.use("/api/cash", require("./routes/cashApproval"));
+app.use("/api/receipts", require("./routes/receipts"));
+app.use("/api/user-management", require("./routes/userManagement"));
 
-// Use routes
-app.use("/api/auth", authRoutes);
-app.use("/api/admin", adminRoutes);
-app.use("/api/accounts", accountsRoutes);
-app.use("/api/cash", cashManagementRoutes);
-app.use("/api/cash", cashApprovalRoutes);
-app.use("/api/receipts", receiptsRoutes);
-app.use("/api/user-management", userManagementRoutes);
-
-// // Start server
-// app.listen(PORT, () => {
-//     console.log(`✅ Server running on http://localhost:${PORT}`);
-//     console.log(`📊 Test: http://localhost:${PORT}/api/test`);
-// });
-
-// in render
+// Start server (Render needs 0.0.0.0)
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Server running on ports ${PORT}`);
+  console.log(`✅ Server running on port ${PORT}`);
 });
