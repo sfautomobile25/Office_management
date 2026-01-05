@@ -103,7 +103,8 @@ function Accounts() {
       cashManagementAPI.getDailySummary({ limit: 7 }),
     ]);
 
-    if (positionRes.data?.success) setCashPosition(positionRes.data.cashPosition);
+    if (positionRes.data?.success)
+      setCashPosition(positionRes.data.cashPosition);
 
     if (summaryRes.data?.success) {
       const summaries = summaryRes.data.summaries || [];
@@ -111,7 +112,9 @@ function Accounts() {
         // auto-generate summary if empty
         try {
           await cashManagementAPI.generateDailySummary();
-          const refreshed = await cashManagementAPI.getDailySummary({ limit: 7 });
+          const refreshed = await cashManagementAPI.getDailySummary({
+            limit: 7,
+          });
           setDailySummary(refreshed.data?.summaries || []);
         } catch (e) {
           console.error("Auto-generate daily summary failed:", e);
@@ -138,7 +141,6 @@ function Accounts() {
     } else {
       setDailyTransactions([]);
     }
-    
   };
 
   const loadExpenseAnalysis = async (period = expensePeriod) => {
@@ -150,7 +152,9 @@ function Accounts() {
       else setExpenseAnalysis(null);
     } catch (err) {
       setExpenseAnalysis(null);
-      setExpenseError(err.response?.data?.error || "Failed to load expense analysis");
+      setExpenseError(
+        err.response?.data?.error || "Failed to load expense analysis"
+      );
     } finally {
       setExpenseLoading(false);
     }
@@ -173,11 +177,15 @@ function Accounts() {
       if (res.data?.success) setRecentBalances(res.data.balances || []);
       else {
         setRecentBalances([]);
-        setRecentBalancesError(res.data?.error || "Failed to load recent balances");
+        setRecentBalancesError(
+          res.data?.error || "Failed to load recent balances"
+        );
       }
     } catch (err) {
       setRecentBalances([]);
-      setRecentBalancesError(err.response?.data?.error || "Failed to load recent balances");
+      setRecentBalancesError(
+        err.response?.data?.error || "Failed to load recent balances"
+      );
     } finally {
       setRecentBalancesLoading(false);
     }
@@ -187,7 +195,8 @@ function Accounts() {
     setLoading(true);
     try {
       if (activeTab === "dashboard") await loadDashboard();
-      if (activeTab === "daily-transactions") await loadDailyTransactions(selectedDate);
+      if (activeTab === "daily-transactions")
+        await loadDailyTransactions(selectedDate);
       if (activeTab === "expenses") await loadExpenseAnalysis(expensePeriod);
     } catch (e) {
       console.error("fetchData error:", e);
@@ -256,7 +265,9 @@ function Accounts() {
   const generateDailyReport = async () => {
     try {
       setReportLoading(true);
-      const res = await cashManagementAPI.downloadDailyReport({ date: reportDate });
+      const res = await cashManagementAPI.downloadDailyReport({
+        date: reportDate,
+      });
 
       const blob = new Blob([res.data], {
         type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -376,49 +387,61 @@ function Accounts() {
   const renderDashboard = () => {
     if (!cashPosition) return null;
 
-    const { today, dailyChange, weeklyFlow, monthlyFlow, todayTransactions } = cashPosition;
+    const { today, dailyChange, weeklyFlow, monthlyFlow, todayTransactions } =
+      cashPosition;
     const todayBalance = Number(today?.closing_balance || 0);
     const change = Number(dailyChange || 0);
 
     return (
       <div className="accounts-dashboard">
         <div className="dashboard-header">
-          <h3>📊 Cash Flow Dashboard</h3>
+          <h3>📊 ক্যাশ ফ্লো ড্যাশবোর্ড</h3>
           <div className="dashboard-actions">
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" , marginBottom: "20px"}}>
               <input
                 type="date"
                 value={reportDate}
                 onChange={(e) => setReportDate(e.target.value)}
               />
-              <button className="btn-primary" onClick={generateDailyReport} disabled={reportLoading}>
+              <button
+                className="btn-primary"
+                onClick={generateDailyReport}
+                disabled={reportLoading}
+              >
                 {reportLoading ? "Generating..." : "Generate Daily Report"}
               </button>
+              <button
+                className="btn-primary"
+                onClick={() => setActiveTab("daily-transactions")}
+              >
+                Record Transaction
+              </button>
             </div>
-            <button className="btn-secondary" onClick={() => setActiveTab("daily-transactions")}>
-              Record Transaction
-            </button>
           </div>
         </div>
 
         <div className="cash-position-cards">
           <div className="cash-card primary">
             <div className="card-header">
-              <h4>Today's Cash Balance</h4>
+              <h4>আজকের নগদ ব্যালেন্স</h4>
               <span className="card-date">{dhakaNowLabel} (Dhaka)</span>
             </div>
             <div className="card-body">
               <div className="cash-amount">{formatBDT(todayBalance)}</div>
-              <div className={`cash-change ${change >= 0 ? "positive" : "negative"}`}>
+              <div
+                className={`cash-change ${
+                  change >= 0 ? "positive" : "negative"
+                }`}
+              >
                 {change >= 0 ? "↗" : "↘"} {formatBDT(Math.abs(change))}
-                <span> from yesterday</span>
+                <span> গতকাল ছিল</span>
               </div>
             </div>
           </div>
 
           <div className="cash-card secondary">
             <div className="card-header">
-              <h4>Today's Activity</h4>
+              <h4>আজকের কার্যক্রম</h4>
             </div>
             <div className="card-body">
               <div className="activity-stats">
@@ -428,11 +451,15 @@ function Accounts() {
                 </div>
                 <div className="activity-item">
                   <span className="label">Cash In:</span>
-                  <span className="value positive">{formatBDT(todayTransactions?.receipts || 0)}</span>
+                  <span className="value positive">
+                    {formatBDT(todayTransactions?.receipts || 0)}
+                  </span>
                 </div>
                 <div className="activity-item">
                   <span className="label">Cash Out:</span>
-                  <span className="value negative">{formatBDT(todayTransactions?.payments || 0)}</span>
+                  <span className="value negative">
+                    {formatBDT(todayTransactions?.payments || 0)}
+                  </span>
                 </div>
               </div>
             </div>
@@ -440,21 +467,29 @@ function Accounts() {
 
           <div className="cash-card info">
             <div className="card-header">
-              <h4>Weekly Flow</h4>
+              <h4>সাপ্তাহিক প্রবাহ</h4>
             </div>
             <div className="card-body">
               <div className="flow-stats">
                 <div className="flow-item">
                   <span className="label">In:</span>
-                  <span className="value">{formatBDT(weeklyFlow?.in || 0)}</span>
+                  <span className="value">
+                    {formatBDT(weeklyFlow?.in || 0)}
+                  </span>
                 </div>
                 <div className="flow-item">
                   <span className="label">Out:</span>
-                  <span className="value">{formatBDT(weeklyFlow?.out || 0)}</span>
+                  <span className="value">
+                    {formatBDT(weeklyFlow?.out || 0)}
+                  </span>
                 </div>
                 <div className="flow-item total">
                   <span className="label">Net:</span>
-                  <span className={`value ${(weeklyFlow?.net || 0) >= 0 ? "positive" : "negative"}`}>
+                  <span
+                    className={`value ${
+                      (weeklyFlow?.net || 0) >= 0 ? "positive" : "negative"
+                    }`}
+                  >
                     {formatBDT(weeklyFlow?.net || 0)}
                   </span>
                 </div>
@@ -464,21 +499,29 @@ function Accounts() {
 
           <div className="cash-card info">
             <div className="card-header">
-              <h4>Monthly Flow</h4>
+              <h4>মাসিক প্রবাহ</h4>
             </div>
             <div className="card-body">
               <div className="flow-stats">
                 <div className="flow-item">
                   <span className="label">In:</span>
-                  <span className="value">{formatBDT(monthlyFlow?.in || 0)}</span>
+                  <span className="value">
+                    {formatBDT(monthlyFlow?.in || 0)}
+                  </span>
                 </div>
                 <div className="flow-item">
                   <span className="label">Out:</span>
-                  <span className="value">{formatBDT(monthlyFlow?.out || 0)}</span>
+                  <span className="value">
+                    {formatBDT(monthlyFlow?.out || 0)}
+                  </span>
                 </div>
                 <div className="flow-item total">
                   <span className="label">Net:</span>
-                  <span className={`value ${(monthlyFlow?.net || 0) >= 0 ? "positive" : "negative"}`}>
+                  <span
+                    className={`value ${
+                      (monthlyFlow?.net || 0) >= 0 ? "positive" : "negative"
+                    }`}
+                  >
                     {formatBDT(monthlyFlow?.net || 0)}
                   </span>
                 </div>
@@ -489,13 +532,19 @@ function Accounts() {
 
         <div className="dashboard-charts">
           <div className="chart-section">
-            <h4>Daily Cash Flow (Last 7 Days)</h4>
+            <h4>দৈনিক নগদ প্রবাহ (শেষ 7 দিন)</h4>
             <div className="cash-flow-chart">
               {(() => {
                 const last7 = (dailySummary || []).slice(0, 7).reverse();
 
-                const maxIn = Math.max(1, ...last7.map((d) => Number(d.total_cash_in || 0)));
-                const maxOut = Math.max(1, ...last7.map((d) => Number(d.total_cash_out || 0)));
+                const maxIn = Math.max(
+                  1,
+                  ...last7.map((d) => Number(d.total_cash_in || 0))
+                );
+                const maxOut = Math.max(
+                  1,
+                  ...last7.map((d) => Number(d.total_cash_out || 0))
+                );
 
                 return last7.map((day, index) => {
                   const cashIn = Number(day.total_cash_in || 0);
@@ -516,7 +565,9 @@ function Accounts() {
                         />
                       </div>
                       <div className="chart-label">
-                        {new Date(day.date).toLocaleDateString("en-US", { weekday: "short" })}
+                        {new Date(day.date).toLocaleDateString("en-US", {
+                          weekday: "short",
+                        })}
                       </div>
                     </div>
                   );
@@ -532,44 +583,68 @@ function Accounts() {
   const renderDailyTransactions = () => (
     <div className="daily-transactions-tab">
       <div className="page-header">
-        <h3>💵 Daily Cash Transactions</h3>
-        <div className="header-actions" style={{ display: "flex", gap: 10, alignItems: "center" }}>
+        <h3>💵 দৈনিক নগদ লেনদেন</h3>
+        <div
+          className="header-actions"
+          style={{ display: "flex", gap: 10, alignItems: "center" }}
+        >
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <span className="text-muted">Date:</span>
-            <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} />
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+            />
           </div>
-          <button className="btn-secondary" onClick={() => loadDailyTransactions(selectedDate)}>
-            Refresh
+          <button
+            className="btn-secondary"
+            onClick={() => loadDailyTransactions(selectedDate)}
+          >
+            রিফ্রেশ
           </button>
         </div>
       </div>
 
       <div className="transactions-layout">
         <div className="transaction-form-section">
-          <h4>Record New Transaction</h4>
+          <h4>নতুন লেনদেন রেকর্ড করুন</h4>
           <form onSubmit={handleCashTransaction} className="transaction-form">
             <div className="form-row">
               <div className="form-group">
-                <label>Date *</label>
-                <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} />
+                <label>তারিখ *</label>
+                <input
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                />
               </div>
               <div className="form-group">
-                <label>Time *</label>
+                <label>সময় *</label>
                 <input
                   type="time"
                   value={newCashTransaction.time}
-                  onChange={(e) => setNewCashTransaction({ ...newCashTransaction, time: e.target.value })}
+                  onChange={(e) =>
+                    setNewCashTransaction({
+                      ...newCashTransaction,
+                      time: e.target.value,
+                    })
+                  }
                   required
                 />
               </div>
             </div>
 
             <div className="form-group">
-              <label>Description *</label>
+              <label>বর্ণনা *</label>
               <input
                 type="text"
                 value={newCashTransaction.description}
-                onChange={(e) => setNewCashTransaction({ ...newCashTransaction, description: e.target.value })}
+                onChange={(e) =>
+                  setNewCashTransaction({
+                    ...newCashTransaction,
+                    description: e.target.value,
+                  })
+                }
                 placeholder="Enter transaction description"
                 required
               />
@@ -577,22 +652,32 @@ function Accounts() {
 
             <div className="form-row">
               <div className="form-group">
-                <label>Amount (BDT) *</label>
+                <label>পরিমাণ (BDT) *</label>
                 <input
                   type="number"
                   step="0.01"
                   value={newCashTransaction.amount}
-                  onChange={(e) => setNewCashTransaction({ ...newCashTransaction, amount: e.target.value })}
+                  onChange={(e) =>
+                    setNewCashTransaction({
+                      ...newCashTransaction,
+                      amount: e.target.value,
+                    })
+                  }
                   placeholder="0.00"
                   required
                 />
               </div>
 
               <div className="form-group">
-                <label>Transaction Type *</label>
+                <label>লেনদেনের ধরন *</label>
                 <select
                   value={newCashTransaction.transaction_type}
-                  onChange={(e) => setNewCashTransaction({ ...newCashTransaction, transaction_type: e.target.value })}
+                  onChange={(e) =>
+                    setNewCashTransaction({
+                      ...newCashTransaction,
+                      transaction_type: e.target.value,
+                    })
+                  }
                   required
                 >
                   <option value="receipt">Receipt (Cash In)</option>
@@ -604,10 +689,15 @@ function Accounts() {
 
             <div className="form-row">
               <div className="form-group">
-                <label>Category *</label>
+                <label>শ্রেণী *</label>
                 <select
                   value={newCashTransaction.category}
-                  onChange={(e) => setNewCashTransaction({ ...newCashTransaction, category: e.target.value })}
+                  onChange={(e) =>
+                    setNewCashTransaction({
+                      ...newCashTransaction,
+                      category: e.target.value,
+                    })
+                  }
                   required
                 >
                   <option value="">Select Category</option>
@@ -622,16 +712,21 @@ function Accounts() {
               </div>
 
               <div className="form-group">
-                <label>Payment Method *</label>
+                <label>পেমেন্ট পদ্ধতি *</label>
                 <select
                   value={newCashTransaction.payment_method}
-                  onChange={(e) => setNewCashTransaction({ ...newCashTransaction, payment_method: e.target.value })}
+                  onChange={(e) =>
+                    setNewCashTransaction({
+                      ...newCashTransaction,
+                      payment_method: e.target.value,
+                    })
+                  }
                   required
                 >
-                  <option value="cash">Cash</option>
-                  <option value="check">Check</option>
-                  <option value="bank_transfer">Bank Transfer</option>
-                  <option value="card">Card</option>
+                  <option value="cash">নগদ</option>
+                  <option value="check">চেক</option>
+                  <option value="bank_transfer">ব্যাঙ্ক ট্রান্সফার</option>
+                  <option value="card">কার্ড</option>
                 </select>
               </div>
             </div>
@@ -642,7 +737,12 @@ function Accounts() {
                 <input
                   type="text"
                   value={newCashTransaction.received_from}
-                  onChange={(e) => setNewCashTransaction({ ...newCashTransaction, received_from: e.target.value })}
+                  onChange={(e) =>
+                    setNewCashTransaction({
+                      ...newCashTransaction,
+                      received_from: e.target.value,
+                    })
+                  }
                   placeholder="Name of payer"
                 />
               </div>
@@ -654,52 +754,67 @@ function Accounts() {
                 <input
                   type="text"
                   value={newCashTransaction.paid_to}
-                  onChange={(e) => setNewCashTransaction({ ...newCashTransaction, paid_to: e.target.value })}
+                  onChange={(e) =>
+                    setNewCashTransaction({
+                      ...newCashTransaction,
+                      paid_to: e.target.value,
+                    })
+                  }
                   placeholder="Name of payee"
                 />
               </div>
             )}
 
             <div className="form-group">
-              <label>Reference Number</label>
+              <label>রেফারেন্স নম্বর</label>
               <input
                 type="text"
                 value={newCashTransaction.reference_number}
-                onChange={(e) => setNewCashTransaction({ ...newCashTransaction, reference_number: e.target.value })}
+                onChange={(e) =>
+                  setNewCashTransaction({
+                    ...newCashTransaction,
+                    reference_number: e.target.value,
+                  })
+                }
                 placeholder="Receipt/Check number"
               />
             </div>
 
             <div className="form-group">
-              <label>Notes</label>
+              <label>নোট</label>
               <textarea
                 value={newCashTransaction.notes}
-                onChange={(e) => setNewCashTransaction({ ...newCashTransaction, notes: e.target.value })}
+                onChange={(e) =>
+                  setNewCashTransaction({
+                    ...newCashTransaction,
+                    notes: e.target.value,
+                  })
+                }
                 placeholder="Additional notes"
                 rows="3"
               />
             </div>
 
             <button type="submit" className="btn-primary">
-              Record Transaction
+             রেকর্ড লেনদেন
             </button>
           </form>
         </div>
 
         <div className="transactions-list-section">
-          <h4>Approved Transactions ({selectedDate})</h4>
+          <h4>অনুমোদিত লেনদেন ✅ ({selectedDate})</h4>
           <div className="table-container">
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Date</th>
-                  <th>Receipt No</th>
-                  <th>Description</th>
-                  <th>Type</th>
-                  <th>Amount (BDT)</th>
-                  <th>Status</th>
-                  <th>View</th>
-                  <th>Print</th>
+                  <th>তারিখ</th>
+                  <th>রসিদ নং</th>
+                  <th>বর্ণনা</th>
+                  <th>ধরন</th>
+                  <th>পরিমাণ (BDT)</th>
+                  <th>স্ট্যাটাস</th>
+                  <th>দেখুন</th>
+                  <th>প্রিন্ট</th>
                 </tr>
               </thead>
               <tbody>
@@ -711,28 +826,50 @@ function Accounts() {
                       <div className="transaction-description">
                         {r.description || "-"}
                         {r.reference_number && (
-                          <div className="text-muted">Ref: {r.reference_number}</div>
+                          <div className="text-muted">
+                            Ref: {r.reference_number}
+                          </div>
                         )}
                       </div>
                     </td>
                     <td>
-                      <span className={`transaction-type ${r.receipt_type || r.transaction_type || ""}`}>
+                      <span
+                        className={`transaction-type ${
+                          r.receipt_type || r.transaction_type || ""
+                        }`}
+                      >
                         {r.receipt_type || r.transaction_type || "-"}
                       </span>
                     </td>
                     <td>
-                      <span className={`amount ${(r.receipt_type || r.transaction_type) === "receipt" ? "positive" : "negative"}`}>
-                        {(r.receipt_type || r.transaction_type) === "receipt" ? "+" : "-"}
+                      <span
+                        className={`amount ${
+                          (r.receipt_type || r.transaction_type) === "receipt"
+                            ? "positive"
+                            : "negative"
+                        }`}
+                      >
+                        {(r.receipt_type || r.transaction_type) === "receipt"
+                          ? "+"
+                          : "-"}
                         {formatBDT(r.amount)}
                       </span>
                     </td>
                     <td>
-                      <span className={`status-badge ${r.status || "approved"}`}>
+                      <span
+                        className={`status-badge ${r.status || "approved"}`}
+                      >
                         {r.status || "approved"}
                       </span>
                     </td>
                     <td>
-                      <button className="btn-secondary" onClick={() => openReceipt(r.cash_transaction_id || r.id)} title="View">
+                      <button
+                        className="btn-secondary"
+                        onClick={() =>
+                          openReceipt(r.cash_transaction_id || r.id)
+                        }
+                        title="View"
+                      >
                         👁️
                       </button>
                     </td>
@@ -780,7 +917,9 @@ function Accounts() {
               <input
                 type="date"
                 value={dailyBalance.date}
-                onChange={(e) => setDailyBalance({ ...dailyBalance, date: e.target.value })}
+                onChange={(e) =>
+                  setDailyBalance({ ...dailyBalance, date: e.target.value })
+                }
                 required
               />
             </div>
@@ -790,7 +929,12 @@ function Accounts() {
                 type="number"
                 step="0.01"
                 value={dailyBalance.opening_balance}
-                onChange={(e) => setDailyBalance({ ...dailyBalance, opening_balance: e.target.value })}
+                onChange={(e) =>
+                  setDailyBalance({
+                    ...dailyBalance,
+                    opening_balance: e.target.value,
+                  })
+                }
                 placeholder="0.00"
                 required
               />
@@ -804,7 +948,12 @@ function Accounts() {
                 type="number"
                 step="0.01"
                 value={dailyBalance.cash_received}
-                onChange={(e) => setDailyBalance({ ...dailyBalance, cash_received: e.target.value })}
+                onChange={(e) =>
+                  setDailyBalance({
+                    ...dailyBalance,
+                    cash_received: e.target.value,
+                  })
+                }
                 placeholder="0.00"
               />
             </div>
@@ -814,7 +963,12 @@ function Accounts() {
                 type="number"
                 step="0.01"
                 value={dailyBalance.cash_paid}
-                onChange={(e) => setDailyBalance({ ...dailyBalance, cash_paid: e.target.value })}
+                onChange={(e) =>
+                  setDailyBalance({
+                    ...dailyBalance,
+                    cash_paid: e.target.value,
+                  })
+                }
                 placeholder="0.00"
               />
             </div>
@@ -828,11 +982,15 @@ function Accounts() {
             </div>
             <div className="preview-item">
               <span>Add: Cash Received:</span>
-              <span className="positive">+ {formatBDT(dailyBalance.cash_received)}</span>
+              <span className="positive">
+                + {formatBDT(dailyBalance.cash_received)}
+              </span>
             </div>
             <div className="preview-item">
               <span>Less: Cash Paid:</span>
-              <span className="negative">- {formatBDT(dailyBalance.cash_paid)}</span>
+              <span className="negative">
+                - {formatBDT(dailyBalance.cash_paid)}
+              </span>
             </div>
             <div className="preview-item total">
               <span>Closing Balance:</span>
@@ -877,7 +1035,11 @@ function Accounts() {
               <tbody>
                 {recentBalancesError && (
                   <tr>
-                    <td colSpan="5" className="text-center" style={{ color: "#f56565" }}>
+                    <td
+                      colSpan="5"
+                      className="text-center"
+                      style={{ color: "#f56565" }}
+                    >
                       {recentBalancesError}
                     </td>
                   </tr>
@@ -886,8 +1048,14 @@ function Accounts() {
                 {!recentBalancesError && recentBalances.length === 0 && (
                   <tr>
                     <td colSpan="5" className="text-center">
-                      <button className="btn-secondary" onClick={loadRecentDailyBalances} disabled={recentBalancesLoading}>
-                        {recentBalancesLoading ? "Loading..." : "Load Recent Balances"}
+                      <button
+                        className="btn-secondary"
+                        onClick={loadRecentDailyBalances}
+                        disabled={recentBalancesLoading}
+                      >
+                        {recentBalancesLoading
+                          ? "Loading..."
+                          : "Load Recent Balances"}
                       </button>
                     </td>
                   </tr>
@@ -896,10 +1064,14 @@ function Accounts() {
                 {recentBalances.map((b) => (
                   <tr key={b.date}>
                     <td>{b.date}</td>
-                    <td className="text-right">{formatBDT(b.opening_balance)}</td>
+                    <td className="text-right">
+                      {formatBDT(b.opening_balance)}
+                    </td>
                     <td className="text-right">{formatBDT(b.cash_received)}</td>
                     <td className="text-right">{formatBDT(b.cash_paid)}</td>
-                    <td className="text-right">{formatBDT(b.closing_balance)}</td>
+                    <td className="text-right">
+                      {formatBDT(b.closing_balance)}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -915,7 +1087,10 @@ function Accounts() {
       <h3>📥 Ledger Export (Excel)</h3>
 
       <div className="ledger-export-controls">
-        <select value={ledgerPeriod} onChange={(e) => setLedgerPeriod(e.target.value)}>
+        <select
+          value={ledgerPeriod}
+          onChange={(e) => setLedgerPeriod(e.target.value)}
+        >
           <option value="monthly">Monthly</option>
           <option value="quarterly">Quarterly</option>
           <option value="yearly">Yearly</option>
@@ -931,7 +1106,10 @@ function Accounts() {
         />
 
         {ledgerPeriod === "monthly" && (
-          <select value={ledgerMonth} onChange={(e) => setLedgerMonth(Number(e.target.value))}>
+          <select
+            value={ledgerMonth}
+            onChange={(e) => setLedgerMonth(Number(e.target.value))}
+          >
             {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
               <option key={m} value={m}>
                 {String(m).padStart(2, "0")}
@@ -941,7 +1119,10 @@ function Accounts() {
         )}
 
         {ledgerPeriod === "quarterly" && (
-          <select value={ledgerQuarter} onChange={(e) => setLedgerQuarter(Number(e.target.value))}>
+          <select
+            value={ledgerQuarter}
+            onChange={(e) => setLedgerQuarter(Number(e.target.value))}
+          >
             <option value={1}>Q1</option>
             <option value={2}>Q2</option>
             <option value={3}>Q3</option>
@@ -949,13 +1130,18 @@ function Accounts() {
           </select>
         )}
 
-        <button className="btn-primary" onClick={downloadLedgerExcel} disabled={ledgerDownloading}>
+        <button
+          className="btn-primary"
+          onClick={downloadLedgerExcel}
+          disabled={ledgerDownloading}
+        >
           {ledgerDownloading ? "Preparing..." : "Download Excel"}
         </button>
       </div>
 
       <div className="text-muted" style={{ marginTop: 10 }}>
-        Export includes Summary + per-account running ledger. Time shown in Asia/Dhaka. Currency: BDT.
+        Export includes Summary + per-account running ledger. Time shown in
+        Asia/Dhaka. Currency: BDT.
       </div>
     </div>
   );
@@ -991,7 +1177,11 @@ function Accounts() {
               <option value="year">This Year</option>
             </select>
 
-            <button className="btn-secondary" onClick={() => loadExpenseAnalysis(expensePeriod)} disabled={expenseLoading}>
+            <button
+              className="btn-secondary"
+              onClick={() => loadExpenseAnalysis(expensePeriod)}
+              disabled={expenseLoading}
+            >
               {expenseLoading ? "Refreshing..." : "Refresh"}
             </button>
           </div>
@@ -1020,8 +1210,13 @@ function Accounts() {
 
               <div className="stat-item">
                 <span className="label">Variance</span>
-                <span className={`value variance ${varianceValue >= 0 ? "positive" : "negative"}`}>
-                  {formatBDT(Math.abs(varianceValue))} {varianceValue >= 0 ? "under" : "over"}
+                <span
+                  className={`value variance ${
+                    varianceValue >= 0 ? "positive" : "negative"
+                  }`}
+                >
+                  {formatBDT(Math.abs(varianceValue))}{" "}
+                  {varianceValue >= 0 ? "under" : "over"}
                 </span>
               </div>
 
@@ -1029,7 +1224,10 @@ function Accounts() {
                 <span className="label">Usage</span>
                 <div className="usage-row">
                   <div className="usage-track">
-                    <div className="usage-fill" style={{ width: `${Math.min(usagePct, 100)}%` }} />
+                    <div
+                      className="usage-fill"
+                      style={{ width: `${Math.min(usagePct, 100)}%` }}
+                    />
                   </div>
                   <span className="usage-text">{usagePct.toFixed(1)}%</span>
                 </div>
@@ -1085,16 +1283,26 @@ function Accounts() {
                       <td>{formatBDT(b)}</td>
                       <td>{formatBDT(a)}</td>
                       <td>
-                        <span className={`variance ${variance >= 0 ? "positive" : "negative"}`}>
-                          {formatBDT(Math.abs(variance))} {variance >= 0 ? "under" : "over"}
+                        <span
+                          className={`variance ${
+                            variance >= 0 ? "positive" : "negative"
+                          }`}
+                        >
+                          {formatBDT(Math.abs(variance))}{" "}
+                          {variance >= 0 ? "under" : "over"}
                         </span>
                       </td>
                       <td>
                         <div className="percentage-ui">
                           <div className="percentage-track">
-                            <div className="percentage-fill" style={{ width: `${Math.min(percent, 100)}%` }} />
+                            <div
+                              className="percentage-fill"
+                              style={{ width: `${Math.min(percent, 100)}%` }}
+                            />
                           </div>
-                          <span className="percentage-text">{percent.toFixed(1)}%</span>
+                          <span className="percentage-text">
+                            {percent.toFixed(1)}%
+                          </span>
                         </div>
                       </td>
                       <td>{expense.transaction_count}</td>
@@ -1112,35 +1320,49 @@ function Accounts() {
   return (
     <div className="accounts-management">
       <div className="page-header">
-        <h2>💰 Accounts & Cash Management</h2>
+        <h2>একাউন্ট এবং ক্যাশ ম্যানেজমেন্ট</h2>
         <div className="accounts-quick-actions">
-          <button className="btn-primary" onClick={() => setActiveTab("daily-transactions")}>
-            + Quick Transaction
+          <button
+            className="btn-primary"
+            onClick={() => setActiveTab("daily-transactions")}
+          >
+            + দ্রুত লেনদেন
           </button>
         </div>
       </div>
 
       <div className="accounts-tabs">
-        <button className={`tab ${activeTab === "dashboard" ? "active" : ""}`} onClick={() => setActiveTab("dashboard")}>
-          📊 Dashboard
+        <button
+          className={`tab ${activeTab === "dashboard" ? "active" : ""}`}
+          onClick={() => setActiveTab("dashboard")}
+        >
+          📊 ড্যাশবোর্ড
         </button>
         <button
-          className={`tab ${activeTab === "daily-transactions" ? "active" : ""}`}
+          className={`tab ${
+            activeTab === "daily-transactions" ? "active" : ""
+          }`}
           onClick={() => setActiveTab("daily-transactions")}
         >
-          💵 Daily Transactions
+          💵 প্রতিদিনের লেনদেন
         </button>
         <button
           className={`tab ${activeTab === "balance-sheet" ? "active" : ""}`}
           onClick={() => setActiveTab("balance-sheet")}
         >
-          📋 Balance Sheet
+          📋 ব্যালেন্স আপডেট
         </button>
-        <button className={`tab ${activeTab === "expenses" ? "active" : ""}`} onClick={() => setActiveTab("expenses")}>
-          📊 Expense Analysis
+        <button
+          className={`tab ${activeTab === "expenses" ? "active" : ""}`}
+          onClick={() => setActiveTab("expenses")}
+        >
+          📊 খরচ এনালাইজ
         </button>
-        <button className={`tab ${activeTab === "reports" ? "active" : ""}`} onClick={() => setActiveTab("reports")}>
-          📈 Reports
+        <button
+          className={`tab ${activeTab === "reports" ? "active" : ""}`}
+          onClick={() => setActiveTab("reports")}
+        >
+          📈 রিপোর্ট
         </button>
       </div>
 
@@ -1158,15 +1380,31 @@ function Accounts() {
 
       {/* Receipt Modal */}
       {receiptModalOpen && (
-        <div className="modal-overlay" onClick={() => setReceiptModalOpen(false)}>
+        <div
+          className="modal-overlay"
+          onClick={() => setReceiptModalOpen(false)}
+        >
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 12,
+              }}
+            >
               <h3 style={{ margin: 0 }}>Money Receipt</h3>
               <div style={{ display: "flex", gap: 8 }}>
-                <button className="btn-secondary" onClick={printReceipt} disabled={!receiptData || receiptLoading}>
+                <button
+                  className="btn-secondary"
+                  onClick={printReceipt}
+                  disabled={!receiptData || receiptLoading}
+                >
                   🖨️ Print
                 </button>
-                <button className="btn-secondary" onClick={() => setReceiptModalOpen(false)}>
+                <button
+                  className="btn-secondary"
+                  onClick={() => setReceiptModalOpen(false)}
+                >
                   ✖
                 </button>
               </div>
@@ -1178,7 +1416,9 @@ function Accounts() {
               {receiptData && (
                 <div id="receipt-print-area" className="box">
                   <div className="title">Money Receipt</div>
-                  <div className="muted">Timezone: Asia/Dhaka • Currency: BDT</div>
+                  <div className="muted">
+                    Timezone: Asia/Dhaka • Currency: BDT
+                  </div>
                   <hr />
 
                   <div className="row">
@@ -1205,15 +1445,23 @@ function Accounts() {
                     </div>
                   </div>
 
-                  <div className="amount">Amount: {formatBDT(receiptData.amount)}</div>
+                  <div className="amount">
+                    Amount: {formatBDT(receiptData.amount)}
+                  </div>
 
                   <hr />
                   <div className="row">
                     <div>
-                      <b>Created By:</b> {receiptData.created_by_name || receiptData.created_by || "-"}
+                      <b>Created By:</b>{" "}
+                      {receiptData.created_by_name ||
+                        receiptData.created_by ||
+                        "-"}
                     </div>
                     <div>
-                      <b>Approved By:</b> {receiptData.approved_by_name || receiptData.approved_by || "-"}
+                      <b>Approved By:</b>{" "}
+                      {receiptData.approved_by_name ||
+                        receiptData.approved_by ||
+                        "-"}
                     </div>
                   </div>
 
