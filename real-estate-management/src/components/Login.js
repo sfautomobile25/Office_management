@@ -61,7 +61,6 @@ function Login({ onLogin }) {
             <input
               type="text"
               name="username"
-              value={formData.username}
               onChange={handleChange}
               style={styles.input}
               placeholder="Enter username"
@@ -74,7 +73,6 @@ function Login({ onLogin }) {
             <input
               type="password"
               name="password"
-              value={formData.password}
               onChange={handleChange}
               style={styles.input}
               placeholder="Enter password"
@@ -99,19 +97,6 @@ function Login({ onLogin }) {
               Forgot Password?
             </Link>
           </p>
-        </div>
-        <div style={styles.info}>
-          <p>Default credentials:</p>
-          <p>
-            Username: <strong>admin</strong>
-          </p>
-          <p>
-            Password: <strong>admin123</strong>
-          </p>
-        </div>
-
-        <div style={styles.footer}>
-          <p>Make sure backend server is running on port 5000</p>
         </div>
       </div>
     </div>
