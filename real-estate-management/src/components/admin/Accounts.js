@@ -1,5 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { accountsAPI, cashManagementAPI } from "../../services/api";
+import {
+  accountsAPI,
+  cashManagementAPI,
+  cashApprovalAPI,
+} from "../../services/api";
 
 function Accounts() {
   // ---------- Helpers ----------
@@ -81,6 +85,14 @@ function Accounts() {
   const [receiptModalOpen, setReceiptModalOpen] = useState(false);
   const [receiptLoading, setReceiptLoading] = useState(false);
   const [receiptData, setReceiptData] = useState(null);
+
+  const [activeSection, setActiveSection] = useState("reports");
+  // you can default to whatever you want: "overview" / "reports" etc
+
+  const [pendingCount, setPendingCount] = useState(0);
+  const [pendingTxLoading, setPendingTxLoading] = useState(false);
+  const [pendingTransactions, setPendingTransactions] = useState([]);
+  const [pendingTxError, setPendingTxError] = useState("");
 
   // New transaction form
   const [newCashTransaction, setNewCashTransaction] = useState({
@@ -206,6 +218,41 @@ function Accounts() {
     }
   };
 
+  const loadPendingCount = async () => {
+    try {
+      const res = await cashApprovalAPI.getPendingCount();
+      const count =
+        res?.data?.count ??
+        res?.data?.pendingCount ??
+        res?.data?.data?.count ??
+        0;
+      setPendingCount(Number(count) || 0);
+    } catch (e) {
+      console.error("Pending count load failed:", e);
+    }
+  };
+
+  const loadPendingTransactions = async () => {
+    try {
+      setPendingTxLoading(true);
+      setPendingTxError("");
+
+      const res = await cashApprovalAPI.getPending();
+
+      const list =
+        res?.data?.transactions ?? res?.data?.data ?? res?.data ?? [];
+
+      setPendingTransactions(Array.isArray(list) ? list : []);
+    } catch (err) {
+      console.error("Pending transactions load failed:", err);
+      setPendingTxError(
+        err?.response?.data?.error || "Failed to load pending transactions"
+      );
+    } finally {
+      setPendingTxLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -217,6 +264,20 @@ function Accounts() {
     loadDailyTransactions(selectedDate).catch(console.error);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDate, activeTab]);
+
+  useEffect(() => {
+    loadPendingCount();
+
+    // optional auto-refresh count every 20s
+    const t = setInterval(loadPendingCount, 20000);
+    return () => clearInterval(t);
+  }, []);
+
+  useEffect(() => {
+    if (activeSection === "pending") {
+      loadPendingTransactions();
+    }
+  }, [activeSection]);
 
   // ---------- Receipt modal actions ----------
   const openReceipt = async (cashTransactionId) => {
@@ -1163,6 +1224,73 @@ function Accounts() {
     </div>
   );
 
+  const renderPending = () => (
+    <div className="transactions-list-section">
+      <div className="page-header">
+        <h5 className="acc-card-title">Pending Transactions</h5>
+
+        <button
+          className="acc-btn"
+          onClick={async () => {
+            await loadPendingTransactions();
+            await loadPendingCount();
+          }}
+          disabled={pendingTxLoading}
+        >
+          {pendingTxLoading ? "Loading..." : "Refresh"}
+        </button>
+      </div>
+
+      <div className="transactions-list-section">
+        {pendingTxError ? (
+          <div className="alert alert-danger mb-0">{pendingTxError}</div>
+        ) : pendingTxLoading ? (
+          <div>Loading pending transactions...</div>
+        ) : pendingTransactions.length === 0 ? (
+          <div className="text-muted">No pending transactions.</div>
+        ) : (
+          <div className="table-container">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Transaction ID</th>
+                  <th>Type</th>
+                  <th className="acc-amount">Amount</th>
+                  <th>Description</th>
+                  <th>Created By</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {pendingTransactions.map((tx) => (
+                  <tr key={tx.id ?? tx.transaction_id}>
+                    <td>{tx.date || tx.created_at || "-"}</td>
+                    <td>{tx.transaction_id ?? tx.id}</td>
+                    <td>{tx.type || "-"}</td>
+                    <td className="acc-amount">
+                      {typeof tx.amount === "number"
+                        ? tx.amount.toFixed(2)
+                        : tx.amount}
+                    </td>
+                    <td className="acc-desc">{tx.description || "-"}</td>
+                    <td>{tx.created_by_name || tx.created_by || "-"}</td>
+                    <td>
+                      <span className="acc-status">
+                        {tx.status || "PENDING"}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
   const renderExpenseAnalysis = () => {
     const totals = expenseAnalysis?.totals || { budget: 0, spent: 0, count: 0 };
     const budget = parseFloat(totals.budget || 0);
@@ -1381,6 +1509,16 @@ function Accounts() {
         >
           📈 রিপোর্ট
         </button>
+
+        <button
+          className={`tab ${activeTab === "pending" ? "active" : ""}`}
+          onClick={() => setActiveTab("pending")}
+        >
+          🔄 পেন্ডিং ট্রান্সেকশন
+          {pendingCount > 0 && (
+            <span className="badge bg-dark text-white">{pendingCount}</span>
+          )}
+        </button>
       </div>
 
       {loading ? (
@@ -1392,6 +1530,7 @@ function Accounts() {
           {activeTab === "balance-sheet" && renderBalanceSheet()}
           {activeTab === "expenses" && renderExpenseAnalysis()}
           {activeTab === "reports" && renderReport()}
+          {activeTab === "pending" && renderPending()}
         </>
       )}
 

@@ -8,7 +8,6 @@ const API = axios.create({
   },
 });
 
-
 // Add token to requests
 API.interceptors.request.use((config) => {
   const token = localStorage.getItem("token");
@@ -178,10 +177,8 @@ export const cashManagementAPI = {
   getMoneyReceipts: (params) => API.get("/cash/money-receipts", { params }),
   getMoneyReceipt: (id) => API.get(`/cash/money-receipts/${id}`),
 
-  
   getMoneyReceiptByTransaction: (cashTransactionId) =>
-  API.get(`/cash/money-receipts/by-transaction/${cashTransactionId}`),
-
+    API.get(`/cash/money-receipts/by-transaction/${cashTransactionId}`),
 };
 
 // System API
@@ -191,7 +188,7 @@ export const systemAPI = {
 };
 
 export const cashApprovalAPI = {
-  getPending: () => API.get("/cash/pending-transactions"),
+  getPending: (params) => API.get("/cash/pending-transactions", { params }),
   approve: (id) => API.post(`/cash/approve-transaction/${id}`),
   reject: (id, reason) =>
     API.post(`/cash/reject-transaction/${id}`, { reason }),

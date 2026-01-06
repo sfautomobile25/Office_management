@@ -1,0 +1,98 @@
+/* ===== Better tables ===== */
+.accounts-page .acc-table-wrap {
+  width: 100%;
+  overflow: auto;
+  border-radius: 14px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: #fff;
+}
+
+/* scrollbar (optional, looks nicer on windows/chrome) */
+.accounts-page .acc-table-wrap::-webkit-scrollbar {
+  height: 10px;
+}
+.accounts-page .acc-table-wrap::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.18);
+  border-radius: 999px;
+}
+.accounts-page .acc-table-wrap::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.accounts-page .acc-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  min-width: 980px;
+  font-size: 13px;
+}
+
+/* sticky header */
+.accounts-page .acc-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: linear-gradient(#ffffff, #fafafa);
+  color: rgba(0, 0, 0, 0.7);
+  font-weight: 800;
+  font-size: 12px;
+  letter-spacing: 0.2px;
+  padding: 12px 12px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  white-space: nowrap;
+}
+
+/* cell */
+.accounts-page .acc-table tbody td {
+  padding: 12px 12px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  vertical-align: middle;
+  color: #111;
+  white-space: nowrap;
+}
+
+/* zebra rows */
+.accounts-page .acc-table tbody tr:nth-child(even) td {
+  background: rgba(0, 0, 0, 0.012);
+}
+
+/* hover */
+.accounts-page .acc-table tbody tr:hover td {
+  background: rgba(13, 110, 253, 0.06);
+}
+
+/* numeric alignment */
+.accounts-page .acc-amount {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* description clamp */
+.accounts-page .acc-desc {
+  max-width: 380px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: rgba(0, 0, 0, 0.75);
+}
+
+/* status pill */
+.accounts-page .acc-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-weight: 900;
+  font-size: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: rgba(255, 193, 7, 0.22);
+  color: #111;
+}
+.accounts-page .acc-status::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #ffc107;
+}
