@@ -1,6 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { accountsAPI, cashManagementAPI } from "../../services/api";
 
+import { ToastContainer, toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
+
 function Accounts() {
   // ---------- Helpers ----------
   const getDhakaISODate = (date = new Date()) => {
@@ -70,6 +73,7 @@ function Accounts() {
   const [ledgerYear, setLedgerYear] = useState(new Date().getFullYear());
   const [ledgerMonth, setLedgerMonth] = useState(new Date().getMonth() + 1);
   const [ledgerQuarter, setLedgerQuarter] = useState(1);
+  const [submitting, setSubmitting] = useState(false);
   const [ledgerDownloading, setLedgerDownloading] = useState(false);
 
   // Report download
@@ -330,6 +334,7 @@ function Accounts() {
   const handleCashTransaction = async (e) => {
     e.preventDefault();
     try {
+      setSubmitting(true);
       // Ensure date matches selectedDate
       const payload = {
         ...newCashTransaction,
@@ -360,8 +365,11 @@ function Accounts() {
         alert(response.data?.error || "Failed to record transaction");
       }
     } catch (error) {
-      console.error("Error recording transaction:", error);
-      alert(error.response?.data?.error || "Failed to record transaction");
+      toast.error(
+        error.response?.data?.error || "Failed to create transaction"
+      );
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -397,7 +405,14 @@ function Accounts() {
         <div className="dashboard-header">
           <h3>📊 ক্যাশ ফ্লো ড্যাশবোর্ড</h3>
           <div className="dashboard-actions">
-            <div style={{ display: "flex", gap: 8, alignItems: "center" , marginBottom: "20px"}}>
+            <div
+              style={{
+                display: "flex",
+                gap: 8,
+                alignItems: "center",
+                marginBottom: "20px",
+              }}
+            >
               <input
                 type="date"
                 value={reportDate}
@@ -795,8 +810,13 @@ function Accounts() {
               />
             </div>
 
-            <button type="submit" className="btn-primary">
-             রেকর্ড লেনদেন
+            <button
+              type="submit"
+              onClick={handleCashTransaction}
+              disabled={submitting}
+              className="btn btn-primary"
+            >
+              {submitting ? "Saving..." : "Create Transaction"}
             </button>
           </form>
         </div>
@@ -1472,6 +1492,18 @@ function Accounts() {
               )}
             </div>
           </div>
+          <ToastContainer
+            position="top-center"
+            autoClose={5000}
+            hideProgressBar={false}
+            newestOnTop={false}
+            closeOnClick={false}
+            rtl={false}
+            pauseOnFocusLoss
+            draggable
+            pauseOnHover
+            theme="light"
+          />
         </div>
       )}
     </div>
