@@ -1,89 +1,110 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const { runAsync, getAsync, allAsync } = require('../database');
-const ExcelJS = require('exceljs');
+const { runAsync, getAsync, allAsync } = require("../database");
+const ExcelJS = require("exceljs");
 
 // ---------- Dhaka helpers ----------
 const dhakaISODate = (offsetDays = 0) => {
   const dt = new Date();
   dt.setDate(dt.getDate() + offsetDays);
 
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Dhaka',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Dhaka",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
   }).formatToParts(dt);
 
-  const y = parts.find(p => p.type === 'year')?.value;
-  const m = parts.find(p => p.type === 'month')?.value;
-  const d = parts.find(p => p.type === 'day')?.value;
+  const y = parts.find((p) => p.type === "year")?.value;
+  const m = parts.find((p) => p.type === "month")?.value;
+  const d = parts.find((p) => p.type === "day")?.value;
   return `${y}-${m}-${d}`;
 };
 
 const formatDhakaNow = (date = new Date()) =>
-  new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Asia/Dhaka',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: true
+  new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Dhaka",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
   }).format(date);
 
 function requireReportAccess(req, res, next) {
-  if (!req.session?.user) return res.status(401).json({ success: false, error: 'Authentication required' });
+  if (!req.session?.user)
+    return res
+      .status(401)
+      .json({ success: false, error: "Authentication required" });
 
   const role = req.session.user.role;
   // allow admin, accounts_officer, manager
-  if (!['admin', 'accounts_officer', 'manager'].includes(role)) {
-    return res.status(403).json({ success: false, error: 'Not allowed' });
+  if (!["admin", "accounts_officer", "manager"].includes(role)) {
+    return res.status(403).json({ success: false, error: "Not allowed" });
   }
   next();
 }
 
 // ---------- Daily cash balance ----------
-router.get('/daily-cash', async (req, res) => {
+router.get("/daily-cash", async (req, res) => {
   try {
     const { date, start_date, end_date } = req.query;
 
     // Validate format YYYY-MM-DD (only if provided)
-    const isISO = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
+    const isISO = (s) => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
 
-    if (date && !isISO(date)) return res.status(400).json({ success: false, error: "Invalid date format (YYYY-MM-DD)" });
-    if (start_date && !isISO(start_date)) return res.status(400).json({ success: false, error: "Invalid start_date format (YYYY-MM-DD)" });
-    if (end_date && !isISO(end_date)) return res.status(400).json({ success: false, error: "Invalid end_date format (YYYY-MM-DD)" });
+    if (date && !isISO(date))
+      return res
+        .status(400)
+        .json({ success: false, error: "Invalid date format (YYYY-MM-DD)" });
+    if (start_date && !isISO(start_date)) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid start_date format (YYYY-MM-DD)",
+      });
+    }
 
-    let query = 'SELECT * FROM daily_cash_balance WHERE 1=1';
+    if (end_date && !isISO(end_date)) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid end_date format (YYYY-MM-DD)",
+      });
+    }
+
+    let query = "SELECT * FROM daily_cash_balance WHERE 1=1";
     const params = [];
 
     if (date) {
-      query += ' AND date = ?';
+      query += " AND date = ?";
       params.push(date);
     } else if (start_date && end_date) {
-      query += ' AND date BETWEEN ? AND ?';
+      query += " AND date BETWEEN ? AND ?";
       params.push(start_date, end_date);
     }
 
-    query += ' ORDER BY date DESC';
+    query += " ORDER BY date DESC";
     const balances = await allAsync(query, params);
 
     return res.json({ success: true, balances: balances || [] });
   } catch (error) {
-    console.error('Error fetching daily cash:', error);
-    return res.status(500).json({ success: false, error: 'Failed to fetch daily cash' });
+    console.error("Error fetching daily cash:", error);
+    return res
+      .status(500)
+      .json({ success: false, error: "Failed to fetch daily cash" });
   }
 });
 
 // POST daily cash: recalculates from approved transactions
-router.post('/daily-cash', async (req, res) => {
+router.post("/daily-cash", async (req, res) => {
   const { date, opening_balance } = req.body;
 
   try {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || '').trim())) {
-      return res.status(400).json({ success: false, error: 'Invalid date format (YYYY-MM-DD)' });
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || "").trim())) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Invalid date format (YYYY-MM-DD)" });
     }
 
     // ✅ Always calculate from approved transactions
@@ -123,17 +144,25 @@ router.post('/daily-cash', async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Daily cash recalculated from approved transactions',
-      balance: { date, opening_balance: opening, cash_received: received, cash_paid: paid, closing_balance: closing }
+      message: "Daily cash recalculated from approved transactions",
+      balance: {
+        date,
+        opening_balance: opening,
+        cash_received: received,
+        cash_paid: paid,
+        closing_balance: closing,
+      },
     });
   } catch (error) {
-    console.error('Error updating daily cash:', error);
-    res.status(500).json({ success: false, error: 'Failed to update daily cash' });
+    console.error("Error updating daily cash:", error);
+    res
+      .status(500)
+      .json({ success: false, error: "Failed to update daily cash" });
   }
 });
 
 // ---------- Cash transactions ----------
-router.get('/cash-transactions', async (req, res) => {
+router.get("/cash-transactions", async (req, res) => {
   try {
     const { date, type, category, status } = req.query;
 
@@ -146,37 +175,83 @@ router.get('/cash-transactions', async (req, res) => {
     `;
     const params = [];
 
-    if (date) { query += ' AND ct.date = ?'; params.push(date); }
-    if (type) { query += ' AND ct.transaction_type = ?'; params.push(type); }
-    if (category) { query += ' AND ct.category = ?'; params.push(category); }
-    if (status) { query += ' AND ct.status = ?'; params.push(status); }
+    if (date) {
+      query += " AND ct.date = ?";
+      params.push(date);
+    }
+    if (type) {
+      query += " AND ct.transaction_type = ?";
+      params.push(type);
+    }
+    if (category) {
+      query += " AND ct.category = ?";
+      params.push(category);
+    }
+    if (status) {
+      query += " AND ct.status = ?";
+      params.push(status);
+    }
 
-    query += ' ORDER BY ct.date DESC, ct.time DESC';
+    query += " ORDER BY ct.date DESC, ct.time DESC";
     const transactions = await allAsync(query, params);
 
-    const totals = transactions.reduce((acc, t) => {
-      if (t.transaction_type === 'receipt') acc.total_receipts += parseFloat(t.amount || 0);
-      if (t.transaction_type === 'payment') acc.total_payments += parseFloat(t.amount || 0);
-      return acc;
-    }, { total_receipts: 0, total_payments: 0 });
+    const totals = transactions.reduce(
+      (acc, t) => {
+        if (t.transaction_type === "receipt")
+          acc.total_receipts += parseFloat(t.amount || 0);
+        if (t.transaction_type === "payment")
+          acc.total_payments += parseFloat(t.amount || 0);
+        return acc;
+      },
+      { total_receipts: 0, total_payments: 0 }
+    );
 
     res.json({ success: true, transactions, totals });
   } catch (error) {
-    console.error('Error fetching cash transactions:', error);
-    res.status(500).json({ success: false, error: 'Failed to fetch cash transactions' });
+    console.error("Error fetching cash transactions:", error);
+    res
+      .status(500)
+      .json({ success: false, error: "Failed to fetch cash transactions" });
   }
 });
 
-router.post('/cash-transactions', async (req, res) => {
+router.post("/cash-transactions", async (req, res) => {
   const {
-    date, time, description, amount, transaction_type, category,
-    payment_method, reference_number, received_from, paid_to, notes
+    date,
+    time,
+    description,
+    amount,
+    transaction_type,
+    category,
+    payment_method,
+    reference_number,
+    received_from,
+    paid_to,
+    notes,
   } = req.body;
 
   try {
+    if (!req.session?.user) {
+      return res.status(401).json({ success: false, error: "Unauthorized" });
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || "").trim())) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Invalid date format (YYYY-MM-DD)" });
+    }
+
+    const amt = Number(amount);
+    if (!Number.isFinite(amt) || amt <= 0) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Invalid amount" });
+    }
+
     const timestamp = Date.now();
     const transaction_id = `CASH-${timestamp}-${Math.floor(Math.random() * 1000)}`;
 
+    // 1) Create cash transaction
     const result = await runAsync(
       `INSERT INTO cash_transactions
        (transaction_id, date, time, description, amount, transaction_type, category,
@@ -185,34 +260,69 @@ router.post('/cash-transactions', async (req, res) => {
       [
         transaction_id,
         date,
-        time || new Date().toTimeString().split(' ')[0],
-        description,
-        amount,
+        time || new Date().toTimeString().split(" ")[0],
+        description || "",
+        amt,
         transaction_type,
-        category,
-        payment_method,
-        reference_number,
-        received_from,
-        paid_to,
-        notes,
-        req.session.user.id
+        category || "",
+        payment_method || "",
+        reference_number || "",
+        received_from || "",
+        paid_to || "",
+        notes || "",
+        req.session.user.id,
       ]
     );
 
-    res.json({
+    const cashTransactionId = result?.lastID;
+
+    // Safety: if lastID not returned, fail loudly (prevents ghost receipts)
+    if (!cashTransactionId) {
+      return res.status(500).json({
+        success: false,
+        error: "Transaction saved but ID not returned (receipt not created).",
+      });
+    }
+
+    // 2) Create money receipt row linked to this cash transaction
+    // Receipt number format: MR-YYYYMMDD-000123
+    const receipt_no = `MR-${String(date).replaceAll("-", "")}-${String(
+      cashTransactionId
+    ).padStart(6, "0")}`;
+
+    await runAsync(
+      `INSERT INTO money_receipts
+       (cash_transaction_id, receipt_no, date, amount, transaction_type, description, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        cashTransactionId,
+        receipt_no,
+        date,
+        amt,
+        transaction_type,
+        description || "",
+        req.session.user.id,
+      ]
+    );
+
+    return res.json({
       success: true,
-      message: 'Cash transaction recorded',
+      message: "Cash transaction recorded + receipt created",
       transaction_id,
-      transactionId: result.lastID
+      transactionId: cashTransactionId,
+      receipt_no,
     });
   } catch (error) {
-    console.error('Error creating cash transaction:', error);
-    res.status(500).json({ success: false, error: 'Failed to record cash transaction' });
+    console.error("Error creating cash transaction:", error);
+    return res
+      .status(500)
+      .json({ success: false, error: "Failed to record cash transaction" });
   }
 });
 
+
 // ---------- Daily summary (from daily_cash_balance; auto-compute if empty) ----------
-router.get('/daily-summary', async (req, res) => {
+router.get("/daily-summary", async (req, res) => {
   try {
     const { date, start_date, end_date } = req.query;
 
@@ -231,10 +341,16 @@ router.get('/daily-summary', async (req, res) => {
     `;
     const params = [];
 
-    if (date) { query += ' AND date = ?'; params.push(date); }
-    if (start_date && end_date) { query += ' AND date BETWEEN ? AND ?'; params.push(start_date, end_date); }
+    if (date) {
+      query += " AND date = ?";
+      params.push(date);
+    }
+    if (start_date && end_date) {
+      query += " AND date BETWEEN ? AND ?";
+      params.push(start_date, end_date);
+    }
 
-    query += ' ORDER BY date DESC LIMIT 30';
+    query += " ORDER BY date DESC LIMIT 30";
     let summaries = await allAsync(query, params);
 
     // ✅ If table is empty, compute from approved cash_transactions (last 7 days Dhaka)
@@ -243,7 +359,8 @@ router.get('/daily-summary', async (req, res) => {
       let end = end_date;
 
       if (date) {
-        start = date; end = date;
+        start = date;
+        end = date;
       } else if (!start || !end) {
         end = dhakaISODate(0);
         start = dhakaISODate(-6);
@@ -282,22 +399,31 @@ router.get('/daily-summary', async (req, res) => {
         total_cash_out: acc.total_cash_out + Number(s.total_cash_out || 0),
         total_bank_in: acc.total_bank_in + Number(s.total_bank_in || 0),
         total_bank_out: acc.total_bank_out + Number(s.total_bank_out || 0),
-        net_cash_flow: acc.net_cash_flow + Number(s.net_cash_flow || 0)
+        net_cash_flow: acc.net_cash_flow + Number(s.net_cash_flow || 0),
       }),
-      { total_cash_in: 0, total_cash_out: 0, total_bank_in: 0, total_bank_out: 0, net_cash_flow: 0 }
+      {
+        total_cash_in: 0,
+        total_cash_out: 0,
+        total_bank_in: 0,
+        total_bank_out: 0,
+        net_cash_flow: 0,
+      }
     );
 
     res.json({ success: true, summaries, periodTotals });
   } catch (error) {
-    console.error('Error fetching daily summary:', error);
-    res.status(500).json({ success: false, error: 'Failed to fetch daily summary' });
+    console.error("Error fetching daily summary:", error);
+    res
+      .status(500)
+      .json({ success: false, error: "Failed to fetch daily summary" });
   }
 });
 
 // ---------- Cash position (FULL object expected by frontend dashboard) ----------
-router.get('/cash-position', async (req, res) => {
+router.get("/cash-position", async (req, res) => {
   try {
-    if (!req.session?.user) return res.status(401).json({ success: false, error: 'Unauthorized' });
+    if (!req.session?.user)
+      return res.status(401).json({ success: false, error: "Unauthorized" });
 
     const todayDate = dhakaISODate(0);
     const yesterdayDate = dhakaISODate(-1);
@@ -305,7 +431,10 @@ router.get('/cash-position', async (req, res) => {
     const monthStart = dhakaISODate(-29);
 
     // today row (daily_cash_balance) OR fallback to last closing
-    let todayRow = await getAsync(`SELECT * FROM daily_cash_balance WHERE date = ?`, [todayDate]);
+    let todayRow = await getAsync(
+      `SELECT * FROM daily_cash_balance WHERE date = ?`,
+      [todayDate]
+    );
 
     if (!todayRow) {
       const prev = await getAsync(
@@ -325,12 +454,17 @@ router.get('/cash-position', async (req, res) => {
         cash_received: 0,
         cash_paid: 0,
         closing_balance: opening,
-        last_balance_date: prev ? prev.date : null
+        last_balance_date: prev ? prev.date : null,
       };
     }
 
-    const yesterdayRow = await getAsync(`SELECT closing_balance FROM daily_cash_balance WHERE date = ?`, [yesterdayDate]);
-    const dailyChange = Number(todayRow.closing_balance || 0) - Number(yesterdayRow?.closing_balance || 0);
+    const yesterdayRow = await getAsync(
+      `SELECT closing_balance FROM daily_cash_balance WHERE date = ?`,
+      [yesterdayDate]
+    );
+    const dailyChange =
+      Number(todayRow.closing_balance || 0) -
+      Number(yesterdayRow?.closing_balance || 0);
 
     // weekly/monthly flow from APPROVED transactions
     const weekAgg = await getAsync(
@@ -402,44 +536,51 @@ router.get('/cash-position', async (req, res) => {
           yesterdayDate,
           weekStart,
           monthStart,
-          timezone: 'Asia/Dhaka'
-        }
-      }
+          timezone: "Asia/Dhaka",
+        },
+      },
     });
   } catch (e) {
-    console.error('Cash position error:', e);
-    res.status(500).json({ success: false, error: 'Failed to load cash position' });
+    console.error("Cash position error:", e);
+    res
+      .status(500)
+      .json({ success: false, error: "Failed to load cash position" });
   }
 });
 
 // ---------- Expense analysis ----------
-router.get('/expense-analysis', async (req, res) => {
+router.get("/expense-analysis", async (req, res) => {
   try {
     const { period } = req.query; // 'day', 'week', 'month', 'year'
-    let dateFilter = '';
+    let dateFilter = "";
     const now = new Date();
 
     switch (period) {
-      case 'day': {
+      case "day": {
         dateFilter = `AND ct.date = '${dhakaISODate(0)}'`;
         break;
       }
-      case 'week': {
+      case "week": {
         dateFilter = `AND ct.date >= '${dhakaISODate(-6)}'`;
         break;
       }
-      case 'month': {
+      case "month": {
         dateFilter = `AND ct.date >= '${dhakaISODate(-29)}'`;
         break;
       }
-      case 'year': {
+      case "year": {
         // approx 365
         const dt = new Date();
         dt.setDate(dt.getDate() - 365);
-        const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Dhaka', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(dt);
-        const y = parts.find(p => p.type === 'year')?.value;
-        const m = parts.find(p => p.type === 'month')?.value;
-        const d = parts.find(p => p.type === 'day')?.value;
+        const parts = new Intl.DateTimeFormat("en-CA", {
+          timeZone: "Asia/Dhaka",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).formatToParts(dt);
+        const y = parts.find((p) => p.type === "year")?.value;
+        const m = parts.find((p) => p.type === "month")?.value;
+        const d = parts.find((p) => p.type === "day")?.value;
         dateFilter = `AND ct.date >= '${y}-${m}-${d}'`;
         break;
       }
@@ -462,31 +603,38 @@ router.get('/expense-analysis', async (req, res) => {
       ORDER BY actual_spent DESC
     `);
 
-    const totals = expenses.reduce((acc, exp) => ({
-      budget: acc.budget + parseFloat(exp.budget_amount || 0),
-      spent: acc.spent + parseFloat(exp.actual_spent || 0),
-      count: acc.count + Number(exp.transaction_count || 0)
-    }), { budget: 0, spent: 0, count: 0 });
+    const totals = expenses.reduce(
+      (acc, exp) => ({
+        budget: acc.budget + parseFloat(exp.budget_amount || 0),
+        spent: acc.spent + parseFloat(exp.actual_spent || 0),
+        count: acc.count + Number(exp.transaction_count || 0),
+      }),
+      { budget: 0, spent: 0, count: 0 }
+    );
 
     res.json({
       success: true,
-      period: period || 'month',
+      period: period || "month",
       expenses,
       totals,
-      variance: totals.budget - totals.spent
+      variance: totals.budget - totals.spent,
     });
   } catch (error) {
-    console.error('Error fetching expense analysis:', error);
-    res.status(500).json({ success: false, error: 'Failed to fetch expense analysis' });
+    console.error("Error fetching expense analysis:", error);
+    res
+      .status(500)
+      .json({ success: false, error: "Failed to fetch expense analysis" });
   }
 });
 
 // ---------- Daily report export ----------
-router.get('/daily-report/export', requireReportAccess, async (req, res) => {
+router.get("/daily-report/export", requireReportAccess, async (req, res) => {
   try {
-    const date = (req.query.date || '').trim();
+    const date = (req.query.date || "").trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      return res.status(400).json({ success: false, error: 'Invalid date format (YYYY-MM-DD)' });
+      return res
+        .status(400)
+        .json({ success: false, error: "Invalid date format (YYYY-MM-DD)" });
     }
 
     const daily = await getAsync(
@@ -501,7 +649,7 @@ router.get('/daily-report/export', requireReportAccess, async (req, res) => {
       opening_balance: 0,
       cash_received: 0,
       cash_paid: 0,
-      closing_balance: 0
+      closing_balance: 0,
     };
 
     const transactions = await allAsync(
@@ -529,19 +677,19 @@ router.get('/daily-report/export', requireReportAccess, async (req, res) => {
     );
 
     const wb = new ExcelJS.Workbook();
-    wb.creator = 'Real Estate Management';
+    wb.creator = "Real Estate Management";
     wb.created = new Date();
 
-    const ws1 = wb.addWorksheet('Summary');
+    const ws1 = wb.addWorksheet("Summary");
     ws1.columns = [
-      { header: 'Date', key: 'date', width: 14 },
-      { header: 'Opening Balance (BDT)', key: 'opening', width: 22 },
-      { header: 'Cash Received (BDT)', key: 'received', width: 22 },
-      { header: 'Cash Paid (BDT)', key: 'paid', width: 20 },
-      { header: 'Closing Balance (BDT)', key: 'closing', width: 22 },
-      { header: 'Generated At (Dhaka)', key},
-      {key: 'generated', width: 24 },
-      { header: 'Generated By', key: 'by', width: 18 }
+      { header: "Date", key: "date", width: 14 },
+      { header: "Opening Balance (BDT)", key: "opening", width: 22 },
+      { header: "Cash Received (BDT)", key: "received", width: 22 },
+      { header: "Cash Paid (BDT)", key: "paid", width: 20 },
+      { header: "Closing Balance (BDT)", key: "closing", width: 22 },
+      { header: "Generated At (Dhaka)", key },
+      { key: "generated", width: 24 },
+      { header: "Generated By", key: "by", width: 18 },
     ];
     ws1.getRow(1).font = { bold: true };
 
@@ -552,63 +700,75 @@ router.get('/daily-report/export', requireReportAccess, async (req, res) => {
       paid: Number(dailyRow.cash_paid || 0),
       closing: Number(dailyRow.closing_balance || 0),
       generated: formatDhakaNow(),
-      by: req.session.user.username || req.session.user.id
+      by: req.session.user.username || req.session.user.id,
     });
 
-    ['B', 'C', 'D', 'E'].forEach((col) => (ws1.getColumn(col).numFmt = '#,##0.00'));
+    ["B", "C", "D", "E"].forEach(
+      (col) => (ws1.getColumn(col).numFmt = "#,##0.00")
+    );
 
-    const ws2 = wb.addWorksheet('Transactions');
+    const ws2 = wb.addWorksheet("Transactions");
     ws2.columns = [
-      { header: 'Transaction ID', key: 'transaction_id', width: 18 },
-      { header: 'Time (Dhaka)', key: 'time', width: 20 },
-      { header: 'Type', key: 'type', width: 12 },
-      { header: 'Amount (BDT)', key: 'amount', width: 16 },
-      { header: 'Description', key: 'desc', width: 40 },
-      { header: 'Category', key: 'category', width: 20 },
-      { header: 'Created By', key: 'created_by', width: 16 },
-      { header: 'Approved By', key: 'approved_by', width: 16 }
+      { header: "Transaction ID", key: "transaction_id", width: 18 },
+      { header: "Time (Dhaka)", key: "time", width: 20 },
+      { header: "Type", key: "type", width: 12 },
+      { header: "Amount (BDT)", key: "amount", width: 16 },
+      { header: "Description", key: "desc", width: 40 },
+      { header: "Category", key: "category", width: 20 },
+      { header: "Created By", key: "created_by", width: 16 },
+      { header: "Approved By", key: "approved_by", width: 16 },
     ];
     ws2.getRow(1).font = { bold: true };
-    ws2.getColumn('D').numFmt = '#,##0.00';
+    ws2.getColumn("D").numFmt = "#,##0.00";
 
     for (const t of transactions) {
       ws2.addRow({
         transaction_id: t.transaction_id,
-        time: t.verified_at ? formatDhakaNow(new Date(t.verified_at)) : (t.time || ''),
+        time: t.verified_at
+          ? formatDhakaNow(new Date(t.verified_at))
+          : t.time || "",
         type: t.transaction_type,
         amount: Number(t.amount || 0),
-        desc: t.description || '',
-        category: t.category || '',
-        created_by: t.created_by_name || t.created_by || '',
-        approved_by: t.verified_by_name || t.verified_by || ''
+        desc: t.description || "",
+        category: t.category || "",
+        created_by: t.created_by_name || t.created_by || "",
+        approved_by: t.verified_by_name || t.verified_by || "",
       });
     }
 
-    const ws3 = wb.addWorksheet('Expense Breakdown');
+    const ws3 = wb.addWorksheet("Expense Breakdown");
     ws3.columns = [
-      { header: 'Category', key: 'category', width: 26 },
-      { header: 'Transactions', key: 'count', width: 14 },
-      { header: 'Total Paid (BDT)', key: 'total', width: 18 }
+      { header: "Category", key: "category", width: 26 },
+      { header: "Transactions", key: "count", width: 14 },
+      { header: "Total Paid (BDT)", key: "total", width: 18 },
     ];
     ws3.getRow(1).font = { bold: true };
-    ws3.getColumn('C').numFmt = '#,##0.00';
+    ws3.getColumn("C").numFmt = "#,##0.00";
 
     for (const r of expenseBreakdown) {
       ws3.addRow({
         category: r.category_name,
         count: Number(r.transaction_count || 0),
-        total: Number(r.total_amount || 0)
+        total: Number(r.total_amount || 0),
       });
     }
 
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename="daily-report-${date}.xlsx"`);
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="daily-report-${date}.xlsx"`
+    );
 
     await wb.xlsx.write(res);
     res.end();
   } catch (e) {
     console.error(e);
-    res.status(500).json({ success: false, error: 'Failed to generate daily report' });
+    res
+      .status(500)
+      .json({ success: false, error: "Failed to generate daily report" });
   }
 });
 
@@ -618,13 +778,16 @@ router.get('/daily-report/export', requireReportAccess, async (req, res) => {
 // - First try money_receipts (printable receipts)
 // - If empty, fallback to approved cash_transactions for that date
 
-router.get('/money-receipts', async (req, res) => {
+router.get("/money-receipts", async (req, res) => {
   try {
-    if (!req.session?.user) return res.status(401).json({ success: false, error: 'Unauthorized' });
+    if (!req.session?.user)
+      return res.status(401).json({ success: false, error: "Unauthorized" });
 
-    const date = (req.query.date || '').trim();
+    const date = (req.query.date || "").trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      return res.status(400).json({ success: false, error: 'Invalid date (YYYY-MM-DD)' });
+      return res
+        .status(400)
+        .json({ success: false, error: "Invalid date (YYYY-MM-DD)" });
     }
 
     // 1) Preferred: actual receipt rows (for view/print)
@@ -681,14 +844,17 @@ router.get('/money-receipts', async (req, res) => {
     return res.json({ success: true, receipts: rows });
   } catch (e) {
     console.error(e);
-    return res.status(500).json({ success: false, error: 'Failed to load receipts' });
+    return res
+      .status(500)
+      .json({ success: false, error: "Failed to load receipts" });
   }
 });
 
 // ✅ Get receipt by RECEIPT ID
-router.get('/money-receipts/:id', async (req, res) => {
+router.get("/money-receipts/:id", async (req, res) => {
   try {
-    if (!req.session?.user) return res.status(401).json({ success: false, error: 'Unauthorized' });
+    if (!req.session?.user)
+      return res.status(401).json({ success: false, error: "Unauthorized" });
 
     const id = Number(req.params.id);
     const row = await getAsync(
@@ -700,7 +866,7 @@ router.get('/money-receipts/:id', async (req, res) => {
         u1.username AS created_by_name,
         u2.username AS approved_by_name
       FROM money_receipts mr
-      JOIN cash_transactions ct ON ct.id = mr.cash_transaction_id
+      LEFT JOIN cash_transactions ct ON ct.id = mr.cash_transaction_id
       LEFT JOIN users u1 ON u1.id = mr.created_by
       LEFT JOIN users u2 ON u2.id = mr.approved_by
       WHERE mr.id = ?
@@ -708,39 +874,51 @@ router.get('/money-receipts/:id', async (req, res) => {
       [id]
     );
 
-    if (!row) return res.status(404).json({ success: false, error: 'Receipt not found' });
+    if (!row)
+      return res
+        .status(404)
+        .json({ success: false, error: "Receipt not found" });
 
     res.json({ success: true, receipt: row });
   } catch (e) {
     console.error(e);
-    res.status(500).json({ success: false, error: 'Failed to load receipt' });
+    res.status(500).json({ success: false, error: "Failed to load receipt" });
   }
 });
 
 // ✅ Get receipt by CASH TRANSACTION ID (no route conflict)
-router.get('/money-receipts/by-transaction/:cashTransactionId', async (req, res) => {
-  try {
-    if (!req.session?.user) return res.status(401).json({ success: false, error: 'Unauthorized' });
+router.get(
+  "/money-receipts/by-transaction/:cashTransactionId",
+  async (req, res) => {
+    try {
+      if (!req.session?.user)
+        return res.status(401).json({ success: false, error: "Unauthorized" });
 
-    const cashTransactionId = Number(req.params.cashTransactionId);
-    const receipt = await getAsync(
-      `SELECT mr.*,
+      const cashTransactionId = Number(req.params.cashTransactionId);
+      const receipt = await getAsync(
+        `SELECT mr.*,
               u1.username AS created_by_name,
               u2.username AS approved_by_name
        FROM money_receipts mr
        LEFT JOIN users u1 ON mr.created_by = u1.id
        LEFT JOIN users u2 ON mr.approved_by = u2.id
        WHERE mr.cash_transaction_id = ?`,
-      [cashTransactionId]
-    );
+        [cashTransactionId]
+      );
 
-    if (!receipt) return res.status(404).json({ success: false, error: 'Receipt not found' });
+      if (!receipt)
+        return res
+          .status(404)
+          .json({ success: false, error: "Receipt not found" });
 
-    res.json({ success: true, receipt });
-  } catch (error) {
-    console.error('Error fetching receipt:', error);
-    res.status(500).json({ success: false, error: 'Failed to fetch receipt' });
+      res.json({ success: true, receipt });
+    } catch (error) {
+      console.error("Error fetching receipt:", error);
+      res
+        .status(500)
+        .json({ success: false, error: "Failed to fetch receipt" });
+    }
   }
-});
+);
 
 module.exports = router;

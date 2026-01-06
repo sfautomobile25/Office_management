@@ -177,6 +177,11 @@ export const cashManagementAPI = {
 
   getMoneyReceipts: (params) => API.get("/cash/money-receipts", { params }),
   getMoneyReceipt: (id) => API.get(`/cash/money-receipts/${id}`),
+
+  
+  getMoneyReceiptByTransaction: (cashTransactionId) =>
+  API.get(`/cash/money-receipts/by-transaction/${cashTransactionId}`),
+
 };
 
 // System API

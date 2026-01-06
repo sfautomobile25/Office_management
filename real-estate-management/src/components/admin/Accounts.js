@@ -1,9 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { accountsAPI, cashManagementAPI } from "../../services/api";
 
-import { ToastContainer, toast } from "react-toastify";
-import "react-toastify/dist/ReactToastify.css";
-
 function Accounts() {
   // ---------- Helpers ----------
   const getDhakaISODate = (date = new Date()) => {
@@ -228,7 +225,9 @@ function Accounts() {
       setReceiptData(null);
       setReceiptModalOpen(true);
 
-      const res = await cashManagementAPI.getMoneyReceipt(cashTransactionId);
+      const res = await cashManagementAPI.getMoneyReceiptByTransaction(
+        cashTransactionId
+      );
       if (res.data?.success) setReceiptData(res.data.receipt);
       else {
         alert(res.data?.error || "Receipt not found");
@@ -365,9 +364,7 @@ function Accounts() {
         alert(response.data?.error || "Failed to record transaction");
       }
     } catch (error) {
-      toast.error(
-        error.response?.data?.error || "Failed to create transaction"
-      );
+      alert(error.response?.data?.error || "Failed to record transaction");
     } finally {
       setSubmitting(false);
     }
@@ -1492,18 +1489,6 @@ function Accounts() {
               )}
             </div>
           </div>
-          <ToastContainer
-            position="top-center"
-            autoClose={5000}
-            hideProgressBar={false}
-            newestOnTop={false}
-            closeOnClick={false}
-            rtl={false}
-            pauseOnFocusLoss
-            draggable
-            pauseOnHover
-            theme="light"
-          />
         </div>
       )}
     </div>
