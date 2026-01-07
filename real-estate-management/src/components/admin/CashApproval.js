@@ -116,19 +116,19 @@ const reject = async (id) => {
       <div className="cash-approval-controls">
         <div className="tab-row">
           <button
-            className={`tab-btn ${activeTab === 'pending' ? 'active' : ''}`}
+            className={`btn-primary ${activeTab === 'pending' ? 'active' : ''}`}
             onClick={() => setActiveTab('pending')}
           >
             Pending
           </button>
           <button
-            className={`tab-btn ${activeTab === 'approved' ? 'active' : ''}`}
+            className={`btn-primary ${activeTab === 'approved' ? 'active' : ''}`}
             onClick={() => setActiveTab('approved')}
           >
             Approved (Monthly)
           </button>
           <button
-            className={`tab-btn ${activeTab === 'cancelled' ? 'active' : ''}`}
+            className={`btn-primary ${activeTab === 'cancelled' ? 'active' : ''}`}
             onClick={() => setActiveTab('cancelled')}
           >
             Cancelled (Monthly)

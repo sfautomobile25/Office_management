@@ -1230,7 +1230,7 @@ function Accounts() {
         <h5 className="acc-card-title">Pending Transactions</h5>
 
         <button
-          className="acc-btn"
+          className="btn-primary"
           onClick={async () => {
             await loadPendingTransactions();
             await loadPendingCount();
