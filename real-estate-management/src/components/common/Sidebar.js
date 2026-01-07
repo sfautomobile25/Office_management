@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from "react";
 import { NavLink } from "react-router-dom";
 import { cashApprovalAPI } from "../../services/api";
-import { ROUTE_PERMS } from './permissionMap';
+import { ROUTE_PERMS } from "./permissionMap";
 
 
 function Sidebar({ isOpen, user }) {
   const [pendingCount, setPendingCount] = useState(0);
+
+
 
   useEffect(() => {
     let alive = true;
@@ -32,24 +34,23 @@ function Sidebar({ isOpen, user }) {
   }, []);
 
   const getMe = () => {
-  try {
-    return JSON.parse(localStorage.getItem('user') || 'null');
-  } catch {
-    return null;
-  }
-};
+    try {
+      return JSON.parse(localStorage.getItem("user") || "null");
+    } catch {
+      return null;
+    }
+  };
 
-const canAccess = (path) => {
-  const me = getMe();
-  if (!me) return false;
-  if (me.role === 'admin') return true;
+  const canAccess = (path) => {
+    const me = getMe();
+    if (!me) return false;
+    if (me.role === "admin") return true;
 
-  const required = ROUTE_PERMS[path];
-  if (!required) return true; // if not mapped, allow (or set false if you want strict)
-  const perms = Array.isArray(me.permissions) ? me.permissions : [];
-  return perms.includes('all') || perms.includes(required);
-};
-
+    const required = ROUTE_PERMS[path];
+    if (!required) return true; // if not mapped, allow (or set false if you want strict)
+    const perms = Array.isArray(me.permissions) ? me.permissions : [];
+    return perms.includes("all") || perms.includes(required);
+  };
 
   const menuItems = [
     { path: "/admin/dashboard", label: "Dashboard", icon: "📊" },
@@ -75,7 +76,6 @@ const canAccess = (path) => {
   ];
 
   const visibleMenuItems = menuItems.filter((item) => canAccess(item.path));
-
 
   return (
     <aside className={`sidebar ${isOpen ? "open" : "closed"}`}>
@@ -116,6 +116,9 @@ const canAccess = (path) => {
             <p>Admin Panel v1.0</p>
             <p>Role: {user?.role}</p>
             <p>User: {user?.username}</p>
+            <div className="sidebar-footer-actions">
+              
+            </div>
           </div>
         )}
       </div>

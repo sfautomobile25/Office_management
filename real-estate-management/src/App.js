@@ -18,6 +18,9 @@ import { PERMS } from "./components/common/permissionMap";
 
 import { authAPI } from "./services/api";
 
+import { ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
+
 // Admin components
 import Dashboard from "./components/admin/Dashboard";
 import UserManagement from "./components/admin/UserManagement";
@@ -40,6 +43,7 @@ import CashApproval from "./components/admin/CashApproval";
 import Ledger from "./components/admin/Ledger";
 import ProfitLoss from "./components/admin/ProfitLoss";
 import BalanceSheet from "./components/admin/BalanceSheet";
+import SettingsPage from "./components/common/ProfileSettings";
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -52,15 +56,14 @@ function App() {
   }, []);
 
   useEffect(() => {
-  if (!isAuthenticated) return;
+    if (!isAuthenticated) return;
 
-  const t = setInterval(() => {
-    authAPI.checkSession().catch(() => {});
-  }, 12000);
+    const t = setInterval(() => {
+      authAPI.checkSession().catch(() => {});
+    }, 12000);
 
-  return () => clearInterval(t);
-}, [isAuthenticated]);
-
+    return () => clearInterval(t);
+  }, [isAuthenticated]);
 
   const checkAuth = async () => {
     try {
@@ -125,6 +128,19 @@ function App() {
 
   return (
     <Router>
+      <>
+        {/* your routes/layout */}
+        <ToastContainer
+          position="top-center"
+          autoClose={2500}
+          hideProgressBar={false}
+          newestOnTop
+          closeOnClick
+          pauseOnHover
+          draggable
+        />
+      </>
+
       <div className="App">
         <Routes>
           {/* Public routes */}
@@ -365,6 +381,7 @@ function App() {
               />
             }
           />
+          <Route path="/settings" element={<SettingsPage />} />
         </Routes>
       </div>
     </Router>
