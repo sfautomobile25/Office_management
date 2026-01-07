@@ -179,6 +179,14 @@ export const cashManagementAPI = {
 
   getMoneyReceiptByTransaction: (cashTransactionId) =>
     API.get(`/cash/money-receipts/by-transaction/${cashTransactionId}`),
+
+  downloadStatement: (params) =>
+    API.get("/cash/statement/export", {
+      params,
+      responseType: "blob",
+    }),
+
+  getStatement: (params) => API.get("/cash/statement", { params }),
 };
 
 // System API

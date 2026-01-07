@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import {
   accountsAPI,
   cashManagementAPI,
@@ -21,6 +21,16 @@ function Accounts() {
     return `${y}-${m}-${d}`;
   };
 
+  const getRangeDates = (days) => {
+    const end = new Date();
+    const start = new Date();
+    start.setDate(end.getDate() - Number(days));
+    return {
+      start_date: getDhakaISODate(start),
+      end_date: getDhakaISODate(end),
+    };
+  };
+
   const formatBDT = (value) =>
     new Intl.NumberFormat("en-BD", {
       style: "currency",
@@ -39,6 +49,9 @@ function Accounts() {
       hour12: true,
     }).format(new Date());
   }, []);
+
+  const statementTimerRef = useRef(null);
+  const statementInFlightRef = useRef(false);
 
   // ---------- UI State ----------
   const [activeTab, setActiveTab] = useState("dashboard");
@@ -93,6 +106,15 @@ function Accounts() {
   const [pendingTxLoading, setPendingTxLoading] = useState(false);
   const [pendingTransactions, setPendingTransactions] = useState([]);
   const [pendingTxError, setPendingTxError] = useState("");
+
+  // Report download
+  const [statementRange, setStatementRange] = useState("30"); // "30" | "90" | "180"
+  const [statementDownloading, setStatementDownloading] = useState(false);
+
+  const [statementRows, setStatementRows] = useState([]);
+  const [statementSummary, setStatementSummary] = useState(null);
+  const [statementLoading, setStatementLoading] = useState(false);
+  const [statementError, setStatementError] = useState("");
 
   // New transaction form
   const [newCashTransaction, setNewCashTransaction] = useState({
@@ -253,6 +275,59 @@ function Accounts() {
     }
   };
 
+  // download statement
+  const downloadStatement = async () => {
+    try {
+      setStatementDownloading(true);
+
+      const { start_date, end_date } = getRangeDates(statementRange);
+
+      const res = await cashManagementAPI.downloadStatement({
+        start_date,
+        end_date,
+      });
+
+      const blob = new Blob([res.data], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Cash_Statement_${start_date}_to_${end_date}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error("downloadStatement failed:", e);
+      alert(e?.response?.data?.error || "Failed to download statement");
+    } finally {
+      setStatementDownloading(false);
+    }
+  };
+
+  const loadStatement = async () => {
+    try {
+      setStatementLoading(true);
+
+      const { start_date, end_date } = getRangeDates(statementRange);
+
+      const res = await cashManagementAPI.getStatement({
+        start_date,
+        end_date,
+      });
+
+      setStatementRows(res.data.statement || []);
+      setStatementSummary(res.data.summary || null);
+    } catch (e) {
+      console.error(e);
+      alert("Failed to load statement");
+    } finally {
+      setStatementLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -278,6 +353,25 @@ function Accounts() {
       loadPendingTransactions();
     }
   }, [activeSection]);
+
+  useEffect(() => {
+    if (activeSection === "pending") {
+      loadStatement();
+    }
+  }, [activeSection, statementRange]);
+
+  useEffect(() => {
+    // auto refresh every 20s (change as you like)
+    if (statementTimerRef.current) clearInterval(statementTimerRef.current);
+
+    statementTimerRef.current = setInterval(() => {
+      loadStatement();
+    }, 20000);
+
+    return () => {
+      if (statementTimerRef.current) clearInterval(statementTimerRef.current);
+    };
+  }, [statementRange]);
 
   // ---------- Receipt modal actions ----------
   const openReceipt = async (cashTransactionId) => {
@@ -1462,6 +1556,130 @@ function Accounts() {
     );
   };
 
+  const renderDownloadStatement = () => {
+    return (
+      <div className="expense-analysis-tab">
+        <div className="page-header expense-header">
+          <h3>📊 Statement</h3>
+
+          <div className="expense-controls">
+            <select
+              value={statementRange}
+              onChange={(e) => setStatementRange(e.target.value)}
+              title="Statement range"
+            >
+              <option value="30">Last 30 days</option>
+              <option value="90">Last 90 days</option>
+              <option value="180">Last 180 days</option>
+            </select>
+
+            {/* ✅ Refresh table */}
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={loadStatement}
+              disabled={statementLoading}
+              title="Refresh statement"
+            >
+              {statementLoading ? "Refreshing..." : "Refresh"}
+            </button>
+
+            {/* ✅ Download Excel */}
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={downloadStatement}
+              disabled={statementDownloading}
+              title="Download statement"
+            >
+              {statementDownloading ? "Downloading..." : "Download Statement"}
+            </button>
+          </div>
+        </div>
+
+        <div className="expense-breakdown">
+          <div className="table-container">
+            {statementError ? (
+              <div className="alert alert-danger">{statementError}</div>
+            ) : statementLoading ? (
+              <div className="text-muted">Loading statement...</div>
+            ) : statementRows.length === 0 ? (
+              <div className="text-muted">No approved transactions found.</div>
+            ) : (
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Time</th>
+                    <th>Trans No</th>
+                    <th>Particulars</th>
+                    <th>Method</th>
+                    <th className="text-end">Debit</th>
+                    <th className="text-end">Credit</th>
+                    <th className="text-end">Balance</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {statementRows.map((r, i) => (
+                    <tr key={`${r.transaction_no}-${i}`}>
+                      <td>{r.date || "-"}</td>
+                      <td>{r.time || "-"}</td>
+                      <td>{r.transaction_no || "-"}</td>
+                      <td
+                        style={{
+                          maxWidth: 380,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {r.particulars || "-"}
+                      </td>
+                      <td>{r.method || "-"}</td>
+                      <td className="text-end">
+                        {r.debit ? Number(r.debit).toFixed(2) : ""}
+                      </td>
+                      <td className="text-end">
+                        {r.credit ? Number(r.credit).toFixed(2) : ""}
+                      </td>
+                      <td className="text-end">
+                        {typeof r.balance === "number"
+                          ? r.balance.toFixed(2)
+                          : Number(r.balance || 0).toFixed(2)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+
+                {statementSummary && (
+                  <tfoot>
+                    <tr>
+                      <td colSpan={5} style={{ fontWeight: 700 }}>
+                        Totals
+                      </td>
+                      <td className="text-end" style={{ fontWeight: 800 }}>
+                        {Number(statementSummary.total_debit || 0).toFixed(2)}
+                      </td>
+                      <td className="text-end" style={{ fontWeight: 800 }}>
+                        {Number(statementSummary.total_credit || 0).toFixed(2)}
+                      </td>
+                      <td className="text-end" style={{ fontWeight: 900 }}>
+                        {Number(statementSummary.closing_balance || 0).toFixed(
+                          2
+                        )}
+                      </td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="accounts-management">
       <div className="page-header">
@@ -1519,6 +1737,14 @@ function Accounts() {
             <span className="badge bg-dark text-white">{pendingCount}</span>
           )}
         </button>
+        <button
+          className={`tab ${
+            activeTab === "download_statement" ? "active" : ""
+          }`}
+          onClick={() => setActiveTab("download_statement")}
+        >
+          🔄 ডাউনলোড স্টেট্মেন্ট
+        </button>
       </div>
 
       {loading ? (
@@ -1531,6 +1757,7 @@ function Accounts() {
           {activeTab === "expenses" && renderExpenseAnalysis()}
           {activeTab === "reports" && renderReport()}
           {activeTab === "pending" && renderPending()}
+          {activeTab === "download_statement" && renderDownloadStatement()}
         </>
       )}
 

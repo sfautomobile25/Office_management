@@ -243,13 +243,13 @@ router.post("/cash-transactions", async (req, res) => {
 
     const amt = Number(amount);
     if (!Number.isFinite(amt) || amt <= 0) {
-      return res
-        .status(400)
-        .json({ success: false, error: "Invalid amount" });
+      return res.status(400).json({ success: false, error: "Invalid amount" });
     }
 
     const timestamp = Date.now();
-    const transaction_id = `CASH-${timestamp}-${Math.floor(Math.random() * 1000)}`;
+    const transaction_id = `CASH-${timestamp}-${Math.floor(
+      Math.random() * 1000
+    )}`;
 
     // 1) Create cash transaction
     const result = await runAsync(
@@ -319,7 +319,6 @@ router.post("/cash-transactions", async (req, res) => {
       .json({ success: false, error: "Failed to record cash transaction" });
   }
 });
-
 
 // ---------- Daily summary (from daily_cash_balance; auto-compute if empty) ----------
 router.get("/daily-summary", async (req, res) => {
@@ -920,5 +919,289 @@ router.get(
     }
   }
 );
+
+// ✅ Bank-style statement export (Excel)
+// URL: /api/cash/statement/export?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD
+router.get("/statement/export", async (req, res) => {
+  try {
+    if (!req.session?.user) {
+      return res.status(401).json({ success: false, error: "Unauthorized" });
+    }
+
+    const { start_date, end_date } = req.query;
+
+    const isISO = (s) => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
+
+    if (!start_date || !end_date) {
+      return res.status(400).json({
+        success: false,
+        error: "start_date and end_date are required (YYYY-MM-DD)",
+      });
+    }
+
+    if (!isISO(start_date) || !isISO(end_date)) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid date format. Use YYYY-MM-DD",
+      });
+    }
+
+    // Pull transactions in date range
+    const rows = await allAsync(
+      `
+  SELECT
+    ct.id,
+    ct.transaction_id,
+    ct.date,
+    ct.time,
+    ct.description,
+    ct.amount,
+    ct.transaction_type,
+    ct.category,
+    ct.payment_method,
+    ct.reference_number,
+    ct.received_from,
+    ct.paid_to,
+    ct.status,
+    u.username  AS created_by_name,
+    v.username  AS verified_by_name
+  FROM cash_transactions ct
+  LEFT JOIN users u ON ct.created_by = u.id
+  LEFT JOIN users v ON ct.verified_by = v.id
+  WHERE ct.date >= ? AND ct.date <= ?
+    AND (ct.status IS NULL OR LOWER(ct.status) NOT IN ('cancelled', 'canceled', 'rejected'))
+    AND (ct.verified_by IS NOT NULL OR LOWER(ct.status) IN ('approved', 'verified'))
+  ORDER BY ct.date ASC, ct.time ASC, ct.id ASC
+  `,
+      [start_date, end_date]
+    );
+
+    // Running balance
+    let balance = 0;
+
+    const normalizeType = (t) => String(t || "").toLowerCase();
+    const isCreditType = (t) =>
+      t.includes("in") || t.includes("receive") || t.includes("credit");
+
+    const statement = rows.map((r, idx) => {
+      const amt = Number(r.amount || 0);
+      const isReceipt =
+        String(r.transaction_type || "").toLowerCase() === "receipt";
+
+      const credit = isReceipt ? amt : 0;
+      const debit = isReceipt ? 0 : amt;
+
+      balance = balance + credit - debit;
+
+      const particularsParts = [
+        r.description || "",
+        r.received_from ? `From: ${r.received_from}` : "",
+        r.paid_to ? `To: ${r.paid_to}` : "",
+      ].filter(Boolean);
+
+      return {
+        sl: idx + 1,
+        date: r.date,
+        time: r.time || "",
+        transNo: r.transaction_id || r.id,
+        particulars: particularsParts.join(" | "),
+        refNo: r.reference_number || "",
+        category: r.category || "",
+        method: r.payment_method || "",
+        debit,
+        credit,
+        balance,
+        status: r.status || "",
+        createdBy: r.created_by_name || "",
+        verifiedBy: r.verified_by_name || "",
+      };
+    });
+
+    // Excel
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("Statement");
+
+    ws.mergeCells("A1:K1");
+    ws.getCell("A1").value = "Cash Statement (Bank Style)";
+    ws.getCell("A1").font = { bold: true, size: 14 };
+    ws.getCell("A1").alignment = { vertical: "middle", horizontal: "center" };
+
+    ws.mergeCells("A2:K2");
+    ws.getCell("A2").value = `Period: ${start_date} to ${end_date}`;
+    ws.getCell("A2").font = { bold: true, size: 11 };
+    ws.getCell("A2").alignment = { vertical: "middle", horizontal: "center" };
+
+    ws.addRow([]);
+
+    ws.columns = [
+      { header: "SL", key: "sl", width: 6 },
+      { header: "Date", key: "date", width: 12 },
+      { header: "Time", key: "time", width: 10 },
+      { header: "Trans No", key: "transNo", width: 18 },
+      { header: "Particulars", key: "particulars", width: 40 },
+      { header: "Ref No", key: "refNo", width: 16 },
+      { header: "Category", key: "category", width: 16 },
+      { header: "Method", key: "method", width: 14 },
+      { header: "Debit", key: "debit", width: 14 },
+      { header: "Credit", key: "credit", width: 14 },
+      { header: "Balance", key: "balance", width: 14 },
+      { header: "Status", key: "status", width: 12 },
+      { header: "Created By", key: "createdBy", width: 16 },
+      { header: "Verified By", key: "verifiedBy", width: 16 },
+    ];
+
+    // header row
+    const headerRow = ws.addRow(ws.columns.map((c) => c.header));
+    headerRow.font = { bold: true };
+    headerRow.alignment = { vertical: "middle", horizontal: "center" };
+    headerRow.eachCell((cell) => {
+      cell.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FFF2F2F2" },
+      };
+      cell.border = {
+        top: { style: "thin", color: { argb: "FFE0E0E0" } },
+        left: { style: "thin", color: { argb: "FFE0E0E0" } },
+        bottom: { style: "thin", color: { argb: "FFE0E0E0" } },
+        right: { style: "thin", color: { argb: "FFE0E0E0" } },
+      };
+    });
+
+    // data rows
+    statement.forEach((s) => {
+      ws.addRow([
+        s.sl,
+        s.date,
+        s.time,
+        s.transNo,
+        s.particulars,
+        s.refNo,
+        s.category,
+        s.method,
+        s.debit,
+        s.credit,
+        s.balance,
+        s.status,
+        s.createdBy,
+        s.verifiedBy,
+      ]);
+    });
+
+    // number format
+    ["F", "G", "H", "I", "J", "K"].forEach((col) => {
+      ws.getColumn(col).numFmt = "#,##0.00";
+    });
+
+    // freeze header
+    ws.views = [
+      { state: "frozen", ySplit: ws.lastRow.number - statement.length },
+    ];
+
+    const filename = `Cash_Statement_${start_date}_to_${end_date}.xlsx`;
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+
+    await wb.xlsx.write(res);
+    res.end();
+  } catch (e) {
+    console.error("statement/export error:", e);
+    res
+      .status(500)
+      .json({ success: false, error: "Failed to export statement" });
+  }
+});
+
+// ✅ Bank-style statement (JSON for UI table)
+router.get("/statement", async (req, res) => {
+  try {
+    if (!req.session?.user) {
+      return res.status(401).json({ success: false, error: "Unauthorized" });
+    }
+
+    const { start_date, end_date } = req.query;
+
+    if (!start_date || !end_date) {
+      return res.status(400).json({
+        success: false,
+        error: "start_date and end_date are required",
+      });
+    }
+
+    const rows = await allAsync(
+      `
+      SELECT
+        ct.id,
+        ct.transaction_id,
+        ct.date,
+        ct.time,
+        ct.description,
+        ct.amount,
+        ct.transaction_type,
+        ct.category,
+        ct.payment_method,
+        ct.reference_number,
+        ct.received_from,
+        ct.paid_to,
+        ct.status,
+        u.username AS created_by_name,
+        v.username AS verified_by_name
+      FROM cash_transactions ct
+      LEFT JOIN users u ON ct.created_by = u.id
+      LEFT JOIN users v ON ct.verified_by = v.id
+      WHERE ct.date >= ? AND ct.date <= ?
+        AND (ct.status IS NULL OR LOWER(ct.status) NOT IN ('cancelled', 'canceled', 'rejected'))
+        AND (ct.verified_by IS NOT NULL OR LOWER(ct.status) IN ('approved', 'verified'))
+      ORDER BY ct.date ASC, ct.time ASC, ct.id ASC
+      `,
+      [start_date, end_date]
+    );
+
+    let balance = 0;
+
+    const statement = rows.map((r, idx) => {
+      const amt = Number(r.amount || 0);
+      const isReceipt =
+        String(r.transaction_type || "").toLowerCase() === "receipt";
+
+      const credit = isReceipt ? amt : 0;
+      const debit = isReceipt ? 0 : amt;
+
+      balance = balance + credit - debit;
+
+      return {
+        sl: idx + 1,
+        date: r.date,
+        time: r.time,
+        transaction_no: r.transaction_id || r.id,
+        particulars: r.description,
+        category: r.category,
+        method: r.payment_method,
+        debit,
+        credit,
+        balance,
+        status: r.status,
+        created_by: r.created_by_name,
+        verified_by: r.verified_by_name,
+      };
+    });
+
+    res.json({
+      success: true,
+      statement,
+      summary: {
+        total_debit: statement.reduce((s, r) => s + r.debit, 0),
+        total_credit: statement.reduce((s, r) => s + r.credit, 0),
+        closing_balance: balance,
+      },
+    });
+  } catch (e) {
+    console.error("statement error:", e);
+    res.status(500).json({ success: false, error: "Failed to load statement" });
+  }
+});
 
 module.exports = router;
