@@ -4,6 +4,7 @@ import {
   cashManagementAPI,
   cashApprovalAPI,
 } from "../../services/api";
+import { toast } from "react-toastify";
 
 function Accounts() {
   // ---------- Helpers ----------
@@ -488,6 +489,7 @@ function Accounts() {
   const handleCashTransaction = async (e) => {
     e.preventDefault();
     try {
+      
       setSubmitting(true);
       // Ensure date matches selectedDate
       const payload = {
@@ -497,7 +499,7 @@ function Accounts() {
 
       const response = await cashManagementAPI.createCashTransaction(payload);
       if (response.data?.success) {
-        alert("Cash transaction recorded!");
+        toast.success("Transaction created ✔️");
         setNewCashTransaction((prev) => ({
           ...prev,
           date: selectedDate,
@@ -516,10 +518,10 @@ function Accounts() {
         // Reload list for selectedDate
         await loadDailyTransactions(selectedDate);
       } else {
-        alert(response.data?.error || "Failed to record transaction");
+        toast.error(response.data?.error || "Failed to record transaction");
       }
     } catch (error) {
-      alert(error.response?.data?.error || "Failed to record transaction");
+      toast.error(error.response?.data?.error || "Failed to record transaction");
     } finally {
       setSubmitting(false);
     }
@@ -529,17 +531,16 @@ function Accounts() {
     try {
       const response = await cashManagementAPI.updateDailyBalance(dailyBalance);
       if (response.data?.success) {
-        alert("Daily balance updated!");
+        toast.success("Daily balance updated!");
         // Optional: refresh balances
         await loadRecentDailyBalances();
         // refresh dashboard too
         if (activeTab === "dashboard") await loadDashboard();
       } else {
-        alert(response.data?.error || "Failed to update balance");
+        toast.error(response.data?.error || "Failed to update balance");
       }
     } catch (error) {
-      console.error("Error updating balance:", error);
-      alert(error.response?.data?.error || "Failed to update balance");
+      toast.error(error.response?.data?.error || "Failed to update balance");
     }
   };
 
@@ -874,6 +875,7 @@ function Accounts() {
                   <option value="Utilities">Utilities</option>
                   <option value="Supplies">Office Supplies</option>
                   <option value="Maintenance">Maintenance</option>
+                  <option value="MdSir">Md Sir</option>
                   <option value="Other">Other</option>
                 </select>
               </div>
