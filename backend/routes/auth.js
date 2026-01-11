@@ -15,19 +15,31 @@ function requireLogin(req, res, next) {
 
 // Login route
 router.post("/login", async (req, res) => {
-  const { username, password } = req.body;
+  const usernameRaw = req.body?.username;
+  const passwordRaw = req.body?.password;
+
+  const username = String(usernameRaw || "").trim();
+  const password = String(passwordRaw || "");
 
   try {
-    // Get user from database
-    const user = await getAsync("SELECT * FROM users WHERE username = ?", [
-      username,
-    ]);
+    if (!username || !password) {
+      return res.status(400).json({
+        success: false,
+        error: "Username and password are required",
+      });
+    }
+
+    // ✅ Case-insensitive username match
+    const user = await getAsync(
+      "SELECT * FROM users WHERE LOWER(username) = LOWER(?)",
+      [username]
+    );
 
     if (!user) {
-      console.log(`❌ User not found: ${username}`);
-      return res.status(401).json({
+      console.log(`❌ Username not found: ${username}`);
+      return res.status(404).json({
         success: false,
-        error: "Invalid username or password",
+        error: "Username not found",
       });
     }
 
@@ -35,10 +47,10 @@ router.post("/login", async (req, res) => {
     const validPassword = await bcrypt.compare(password, user.password);
 
     if (!validPassword) {
-      console.log(`❌ Invalid password for: ${username}`);
+      console.log(`❌ Password not matched for: ${username}`);
       return res.status(401).json({
         success: false,
-        error: "Invalid username or password",
+        error: "Password not matched",
       });
     }
 
@@ -69,10 +81,10 @@ router.post("/login", async (req, res) => {
     // Log the login
     await runAsync(
       "INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)",
-      [user.id, "LOGIN", `User ${username} logged in successfully`]
+      [user.id, "LOGIN", `User ${user.username} logged in successfully`]
     );
 
-    console.log(`✅ Login successful for: ${username}`);
+    console.log(`✅ Login successful for: ${user.username}`);
 
     return res.json({
       success: true,
@@ -93,6 +105,7 @@ router.post("/login", async (req, res) => {
     });
   }
 });
+
 
 router.post("/logout", async (req, res) => {
   const isProd = process.env.NODE_ENV === "production";
