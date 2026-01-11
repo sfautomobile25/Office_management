@@ -117,6 +117,8 @@ function Accounts() {
   const [statementLoading, setStatementLoading] = useState(false);
   const [statementError, setStatementError] = useState("");
 
+  const [transactionType, setTransactionType] = useState("cash_in"); // or "receipt"
+  const [category, setCategory] = useState("");
   // New transaction form
   const [newCashTransaction, setNewCashTransaction] = useState({
     date: getDhakaISODate(),
@@ -131,6 +133,89 @@ function Accounts() {
     paid_to: "",
     notes: "",
   });
+
+  const CASH_IN_CATEGORIES = [
+    "Rent Collection",
+    "Office Income",
+    "Commission",
+    "Service Charge",
+    "Deposit Received",
+    "Sale",
+    "Other Income",
+  ];
+
+  const CASH_OUT_CATEGORIES = [
+    "ধার প্রদান এম ডি স্যার",
+    "রাজমিস্ত্রী মুজুরি",
+    "দৈনন্দিন মুজুরি",
+    "সেনেটারি মুজুরি",
+    "টাইলস মিস্ত্রি মুজুরি",
+    "ইলেক্ট্রিক মিস্ত্রি মুজুরি",
+    "রঙ মিস্ত্রি মুজুরি",
+    "বেতন প্রদান",
+    "আপ্যায়ন খরচ",
+    "অফিস খরচ",
+    "যাতায়াত খরচ",
+    "অনুদান ও যাকাত",
+    "মেরামত ও সংস্করন",
+    "মনোহরী ও স্টেশনারি",
+    "লিফট সার্ভিসিং",
+    "দোকান ভাড়া",
+    "বিদ্যুৎ বিল",
+    "পানি বিল",
+    "টেলিফোন বিল",
+    "ইন্টারনেট বিল",
+    "এ আই টী",
+    "গ্যারেজ ভাড়া",
+    "মিডিয়া খরচ",
+    "বিজ্ঞাপন খরচ",
+    "জমি ক্রয়",
+    "জ্বালানী খাত",
+    "রেডিমিক্স ঢালাই খরচ",
+    "সেনেটারি মালামাল",
+    "ইলেক্ট্রিক মালামাল",
+    "মেশিন ও যন্ত্রপাতি",
+    "বিল্ডিং প্লানার",
+    "রড সিমেন্ট ক্রয় ইলিয়াছ আলী",
+    "সিমেন্ট ক্রয় আজাদ খান",
+    "পাথর ক্রয়",
+    "সিলেকশান বালি",
+    "ইট ক্রয়",
+    "সাদা বালু",
+    "ভরাট বালু",
+    "টাইলস ক্রয়",
+    "রঙ সামগ্রী ক্রয়",
+    "হার্ডঅয়ার মালামাল",
+    "থাই গ্লাস- কান্তা থাই",
+    "আসবাব পত্র- ফার্নিচার",
+    "অয়েল্ডিং মুজুরি- নাহার গার্ডেন",
+    "ফ্লাট ও দোকানের টাকা ফেরত",
+    "পিকেট ও খোয়া ক্রয়",
+    "লিফট ক্রয়",
+    "বসুন্ধারা লিফট ক্রয়",
+    "পারকিং টাইলস ক্রয়",
+    "ডিজাইন ঢাকা প্রজেক্ট- নুর আলম",
+    "ঢাকা প্রজেক্ট খরচ",
+    "বিল্ডিং প্নানার- নাহার গার্ডেন",
+    "নাহার গার্ডেন খরচ- বিভিন্ন",
+    "বাসা ভাড়া প্রদান",
+    "কাঠ ক্রয়",
+    "এডভান্স ফেরত- বিভিন্ন",
+    "ডিজাইন নাহার গার্ডেন",
+    "কোম্পানির ট্যাক্সবাবদ খরচ",
+    "ময়েজের ব্যক্তিগত খরচ",
+    "ল্যান্ড ওনার- ফ্লাট এর কাজ বাবদ প্রদান",
+    "বিভিন্ন মালামাল বাবদ খরচ",
+    "বক্স ক্রয়",
+    "বোর্ড ক্রয়",
+    "এসি ক্রয়- জামান টাওয়ার",
+    "কেমিক্যাল ক্রয়",
+    "চায়না থেকে মাল ক্রয়"
+  ];
+
+  const isCashIn =
+    transactionType === "receipt" || transactionType === "cash_in";
+  const categoryOptions = isCashIn ? CASH_IN_CATEGORIES : CASH_OUT_CATEGORIES;
 
   // ---------- Data loaders ----------
   const loadDashboard = async () => {
@@ -374,6 +459,10 @@ function Accounts() {
     };
   }, [statementRange]);
 
+  useEffect(() => {
+    setCategory(""); // reset category when user changes cash in/out
+  }, [transactionType]);
+
   // ---------- Receipt modal actions ----------
   const openReceipt = async (cashTransactionId) => {
     try {
@@ -489,12 +578,12 @@ function Accounts() {
   const handleCashTransaction = async (e) => {
     e.preventDefault();
     try {
-      
       setSubmitting(true);
       // Ensure date matches selectedDate
       const payload = {
         ...newCashTransaction,
         date: selectedDate,
+        category
       };
 
       const response = await cashManagementAPI.createCashTransaction(payload);
@@ -521,7 +610,9 @@ function Accounts() {
         toast.error(response.data?.error || "Failed to record transaction");
       }
     } catch (error) {
-      toast.error(error.response?.data?.error || "Failed to record transaction");
+      toast.error(
+        error.response?.data?.error || "Failed to record transaction"
+      );
     } finally {
       setSubmitting(false);
     }
@@ -839,17 +930,12 @@ function Accounts() {
               <div className="form-group">
                 <label>লেনদেনের ধরন *</label>
                 <select
-                  value={newCashTransaction.transaction_type}
-                  onChange={(e) =>
-                    setNewCashTransaction({
-                      ...newCashTransaction,
-                      transaction_type: e.target.value,
-                    })
-                  }
+                  value={newCashTransaction.transactionType}
+                  onChange={(e) => setTransactionType(e.target.value)}
                   required
                 >
-                  <option value="receipt">Receipt (Cash In)</option>
-                  <option value="payment">Payment (Cash Out)</option>
+                  <option value="receipt">Cash In</option>
+                  <option value="payment">Cash Out</option>
                   <option value="transfer">Transfer</option>
                 </select>
               </div>
@@ -859,24 +945,16 @@ function Accounts() {
               <div className="form-group">
                 <label>শ্রেণী *</label>
                 <select
-                  value={newCashTransaction.category}
-                  onChange={(e) =>
-                    setNewCashTransaction({
-                      ...newCashTransaction,
-                      category: e.target.value,
-                    })
-                  }
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
                   required
                 >
-                  <option value="">Select Category</option>
-                  <option value="Sales">Sales</option>
-                  <option value="Rent">Rent</option>
-                  <option value="Salary">Salary</option>
-                  <option value="Utilities">Utilities</option>
-                  <option value="Supplies">Office Supplies</option>
-                  <option value="Maintenance">Maintenance</option>
-                  <option value="MdSir">Md Sir</option>
-                  <option value="Other">Other</option>
+                  <option value="">Select category</option>
+                  {categoryOptions.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -983,6 +1061,7 @@ function Accounts() {
                 <tr>
                   <th>তারিখ</th>
                   <th>রসিদ নং</th>
+                  <th>ক্যাটাগরি</th>
                   <th>বর্ণনা</th>
                   <th>ধরন</th>
                   <th>পরিমাণ (BDT)</th>
@@ -996,6 +1075,7 @@ function Accounts() {
                   <tr key={r.id}>
                     <td>{r.date || selectedDate}</td>
                     <td>{r.receipt_no || "-"}</td>
+                    <td>{r.category || "-"}</td>
                     <td>
                       <div className="transaction-description">
                         {r.description || "-"}
@@ -1614,6 +1694,7 @@ function Accounts() {
                     <th>Date</th>
                     <th>Time</th>
                     <th>Trans No</th>
+                    <th>Category</th>
                     <th>Particulars</th>
                     <th>Method</th>
                     <th className="text-end">Debit</th>
@@ -1628,6 +1709,7 @@ function Accounts() {
                       <td>{r.date || "-"}</td>
                       <td>{r.time || "-"}</td>
                       <td>{r.transaction_no || "-"}</td>
+                      <td>{r.category || "-"}</td>
                       <td
                         style={{
                           maxWidth: 380,

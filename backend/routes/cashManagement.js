@@ -792,23 +792,24 @@ router.get("/money-receipts", async (req, res) => {
     // 1) Preferred: actual receipt rows (for view/print)
     let rows = await allAsync(
       `
-      SELECT
-        mr.id,
-        mr.cash_transaction_id,
-        mr.receipt_no,
-        mr.date,
-        mr.amount,
-        mr.transaction_type AS receipt_type,
-        mr.description,
-        mr.created_at,
-        ct.transaction_id,
-        ct.status
-      FROM money_receipts mr
-      LEFT JOIN cash_transactions ct ON ct.id = mr.cash_transaction_id
-      WHERE mr.date = ?
-        AND (ct.status = 'approved' OR ct.status IS NULL)
-      ORDER BY mr.created_at DESC, mr.id DESC
-      `,
+  SELECT
+    mr.id,
+    mr.cash_transaction_id,
+    mr.receipt_no,
+    mr.date,
+    mr.amount,
+    mr.transaction_type AS receipt_type,
+    mr.description,
+    mr.created_at,
+    ct.transaction_id,
+    ct.status,
+    ct.category
+  FROM money_receipts mr
+  LEFT JOIN cash_transactions ct ON ct.id = mr.cash_transaction_id
+  WHERE mr.date = ?
+    AND (ct.status = 'approved' OR ct.status IS NULL)
+  ORDER BY mr.created_at DESC, mr.id DESC
+  `,
       [date]
     );
 
@@ -816,21 +817,22 @@ router.get("/money-receipts", async (req, res) => {
     if (!rows || rows.length === 0) {
       const tx = await allAsync(
         `
-        SELECT
-          ct.id AS cash_transaction_id,
-          ct.date,
-          ct.amount,
-          ct.transaction_type AS receipt_type,
-          ct.description,
-          ct.transaction_id,
-          ct.status,
-          ct.created_at,
-          ('AUTO-' || ct.transaction_id) AS receipt_no
-        FROM cash_transactions ct
-        WHERE ct.date = ?
-          AND ct.status = 'approved'
-        ORDER BY ct.created_at DESC, ct.id DESC
-        `,
+  SELECT
+    ct.id AS cash_transaction_id,
+    ct.date,
+    ct.amount,
+    ct.transaction_type AS receipt_type,
+    ct.description,
+    ct.transaction_id,
+    ct.status,
+    ct.created_at,
+    ct.category,
+    ('AUTO-' || ct.transaction_id) AS receipt_no
+  FROM cash_transactions ct
+  WHERE ct.date = ?
+    AND ct.status = 'approved'
+  ORDER BY ct.created_at DESC, ct.id DESC
+  `,
         [date]
       );
 

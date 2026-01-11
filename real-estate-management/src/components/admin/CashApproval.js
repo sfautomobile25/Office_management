@@ -152,8 +152,6 @@ const reject = async (id) => {
             {message.text}
         </div>
         )}
-
-
       {loading ? (
         <div className="loading-state">
           <div className="loading-spinner-large"></div>
@@ -169,6 +167,7 @@ const reject = async (id) => {
                   <th>Date</th>
                   <th>Type</th>
                   <th>Amount</th>
+                  <th>Category</th>
                   <th>Description</th>
                   <th>Created By</th>
                   <th>Status</th>
@@ -188,6 +187,7 @@ const reject = async (id) => {
                       <td>{t.date}</td>
                       <td>{t.transaction_type}</td>
                       <td>{Number(t.amount).toFixed(2)}</td>
+                      <td>{t.category}</td>
                       <td>{t.description}</td>
                       <td>{t.created_by_name || t.created_by}</td>
                       <td>
@@ -195,10 +195,10 @@ const reject = async (id) => {
                       </td>
                       {activeTab === 'pending' && (
                         <td>
-                          <button className="btn-primary" onClick={() => approve(t.id)}>
+                          <button className="btn-sm btn-primary" onClick={() => approve(t.id)}>
                             Approve
                           </button>{' '}
-                          <button className="btn-danger" onClick={() => reject(t.id)}>
+                          <button className="btn-sm btn-danger" onClick={() => reject(t.id)}>
                             Reject
                           </button>
                         </td>
