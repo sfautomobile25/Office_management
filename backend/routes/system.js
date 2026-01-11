@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../database');
+const { allAsync, runAsync } = require("../database");
 
 // Public endpoints for system status
 router.get('/status', async (req, res) => {
@@ -199,5 +200,21 @@ router.get('/seo', async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+
+router.get("/staff", async (req, res) => {
+  try {
+    const staff = await allAsync(
+      `SELECT id, username AS name
+       FROM users
+       WHERE role IN ('admin','staff')
+       ORDER BY username`
+    );
+    res.json({ staff });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Failed to load staff" });
+  }
+});
+
 
 module.exports = router;

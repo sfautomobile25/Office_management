@@ -228,6 +228,9 @@ router.post("/cash-transactions", async (req, res) => {
     received_from,
     paid_to,
     notes,
+    scope,
+    party_type,
+    party_id,
   } = req.body;
 
   try {

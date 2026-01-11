@@ -197,6 +197,7 @@ export const cashManagementAPI = {
 export const systemAPI = {
   healthCheck: () => API.get("/health"),
   test: () => API.get("/test"),
+  getStaff: () => API.get("/system/staff"),
 };
 
 export const cashApprovalAPI = {
@@ -225,5 +226,35 @@ export const userManagementAPI = {
     API.put(`/user-management/users/${id}`, userData),
   deleteUser: (id) => API.delete(`/user-management/users/${id}`),
 };
+
+
+// =======================
+// Customers API
+// =======================
+export const customersAPI = {
+  getCustomers: () =>
+    API.get("/customers"),
+
+  createCustomer: (data) =>
+    API.post("/customers", data),
+
+  updateCustomer: (id, data) =>
+    API.put(`/customers/${id}`, data),
+
+  deleteCustomer: (id) =>
+    API.delete(`/customers/${id}`),
+};
+
+// =======================
+// Suppliers API
+// =======================
+export const suppliersAPI = {
+  getSuppliers: () => API.get("/suppliers"),
+};
+
+export const brokersAPI = {
+  getBrokers: () => API.get("/brokers"),
+};
+
 
 export default API;

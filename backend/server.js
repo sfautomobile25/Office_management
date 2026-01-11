@@ -67,6 +67,12 @@ app.use("/api/cash", require("./routes/cashManagement"));
 app.use("/api/cash", require("./routes/cashApproval"));
 app.use("/api/receipts", require("./routes/receipts"));
 app.use("/api/user-management", require("./routes/userManagement"));
+app.use("/api/customers", require("./routes/customers"));
+app.use("/api/system", require("./routes/system"));
+app.use("/api/brokers", require("./routes/brokers"));
+app.use("/api/suppliers", require("./routes/suppliers"));
+
+
 
 // Start server (Render needs 0.0.0.0)
 app.listen(PORT, "0.0.0.0", () => {

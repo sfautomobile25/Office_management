@@ -1,8 +1,13 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
+
 import {
   accountsAPI,
   cashManagementAPI,
   cashApprovalAPI,
+  customersAPI,
+  suppliersAPI,
+  brokersAPI,
+  systemAPI,
 } from "../../services/api";
 import { toast } from "react-toastify";
 
@@ -134,6 +139,13 @@ function Accounts() {
     notes: "",
   });
 
+  const [customers, setCustomers] = useState([]);
+  const [selectedCustomerId, setSelectedCustomerId] = useState("");
+  const [txScope, setTxScope] = useState("general"); // general|staff|customer|broker|supplier
+  const [partyId, setPartyId] = useState("");
+  const [partyList, setPartyList] = useState([]); // dropdown options [{id,name}]
+  const [partyLoading, setPartyLoading] = useState(false);
+
   const CASH_IN_CATEGORIES = [
     "Rent Collection",
     "Office Income",
@@ -210,7 +222,7 @@ function Accounts() {
     "বোর্ড ক্রয়",
     "এসি ক্রয়- জামান টাওয়ার",
     "কেমিক্যাল ক্রয়",
-    "চায়না থেকে মাল ক্রয়"
+    "চায়না থেকে মাল ক্রয়",
   ];
 
   const isCashIn =
@@ -463,6 +475,47 @@ function Accounts() {
     setCategory(""); // reset category when user changes cash in/out
   }, [transactionType]);
 
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await customersAPI.getCustomers(); // we’ll add this in api.js
+        setCustomers(res.data?.customers || []);
+      } catch (e) {
+        console.error("Failed to load customers", e);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    setPartyId("");
+    setPartyList([]);
+
+    const load = async () => {
+      if (txScope === "general") return;
+
+      setPartyLoading(true);
+      try {
+        if (txScope === "customer") {
+          const res = await customersAPI.getCustomers();
+          setPartyList(res.data.customers || []);
+        } else if (txScope === "staff") {
+          const res = await systemAPI.getStaff();
+          setPartyList(res.data.staff || []);
+        } else if (txScope === "broker") {
+          const res = await brokersAPI.getBrokers();
+          setPartyList(res.data.brokers || []);
+        } else if (txScope === "supplier") {
+          const res = await suppliersAPI.getSuppliers();
+          setPartyList(res.data.suppliers || []);
+        }
+      } finally {
+        setPartyLoading(false);
+      }
+    };
+
+    load();
+  }, [txScope]);
+
   // ---------- Receipt modal actions ----------
   const openReceipt = async (cashTransactionId) => {
     try {
@@ -583,7 +636,10 @@ function Accounts() {
       const payload = {
         ...newCashTransaction,
         date: selectedDate,
-        category
+        category,
+        scope: txScope,
+        party_type: txScope === "general" ? null : txScope,
+        party_id: txScope === "general" ? null : Number(partyId),
       };
 
       const response = await cashManagementAPI.createCashTransaction(payload);
@@ -939,6 +995,43 @@ function Accounts() {
                   <option value="transfer">Transfer</option>
                 </select>
               </div>
+
+              <div className="form-group">
+                <label>Transaction Scope</label>
+                <select
+                  value={txScope}
+                  onChange={(e) => setTxScope(e.target.value)}
+                >
+                  <option value="general">জেনারেল</option>
+                  <option value="staff">অফিস স্টাফ</option>
+                  <option value="customer">কাস্টমার</option>
+                  <option value="broker">ব্রকার</option>
+                  <option value="supplier">সাপ্লায়ার</option>
+                </select>
+              </div>
+
+              {txScope !== "general" && (
+                <div className="form-group">
+                  <label>
+                    Select {txScope.charAt(0).toUpperCase() + txScope.slice(1)}
+                  </label>
+                  <select
+                    value={partyId}
+                    onChange={(e) => setPartyId(e.target.value)}
+                    required
+                    disabled={partyLoading}
+                  >
+                    <option value="">
+                      {partyLoading ? "Loading..." : `Select ${txScope}`}
+                    </option>
+                    {partyList.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
 
             <div className="form-row">
