@@ -5378,6 +5378,33 @@ input:checked + .switch-slider:before {
   z-index: 999999 !important;
 }
 
+/* ===== Password field with eye toggle ===== */
+.password-field {
+  position: relative;
+  width: 100%;
+}
+
+.password-field .settings-input {
+  padding-right: 44px; /* space for eye button */
+}
+
+.password-eye {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 4px;
+  color: rgba(0, 0, 0, 0.55);
+}
+
+.password-eye:hover {
+  color: rgba(0, 0, 0, 0.85);
+}
 
 
 

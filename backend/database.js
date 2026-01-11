@@ -71,7 +71,7 @@ async function init() {
       await client.query(
         `INSERT INTO users (username, email, password, role, permissions, session_version)
          VALUES ($1, $2, $3, $4, $5, 1)
-         ON CONFLICT (username) DO NOTHING`,
+         ON CONFLICT (email) DO NOTHING`,
         ["admin", "admin@realestate.com", hashedPassword, "admin", JSON.stringify(["all"])],
       );
 

@@ -201,6 +201,7 @@ router.post("/register", async (req, res) => {
   const { username, email, password, confirmPassword, role } = req.body;
 
   console.log(`🔧 Registration attempt for: ${username}`);
+   console.log("📩 register body:", req.body);
 
   // Validation
   if (!username || !email || !password || !confirmPassword) {
@@ -271,6 +272,8 @@ router.post("/register", async (req, res) => {
       error: "Registration failed. Please try again.",
     });
   }
+ 
+
 });
 
 // Forgot Password

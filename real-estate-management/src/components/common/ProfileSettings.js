@@ -11,6 +11,8 @@ export default function SettingsPage() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [savingPass, setSavingPass] = useState(false);
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
 
   const saveUsername = async () => {
     try {
@@ -82,22 +84,44 @@ export default function SettingsPage() {
           <div className="settings-card-title">Change Password</div>
 
           <label className="settings-label">Current Password</label>
-          <input
-            type="password"
-            className="settings-input"
-            value={currentPassword}
-            onChange={(e) => setCurrentPassword(e.target.value)}
-            placeholder="Current password"
-          />
+          <div className="password-field">
+            <input
+              type={showCurrentPassword ? "text" : "password"}
+              className="settings-input"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              placeholder="Current password"
+            />
 
+            <button
+              type="button"
+              className="password-eye"
+              onClick={() => setShowCurrentPassword((v) => !v)}
+              tabIndex={-1}
+            >
+              {showCurrentPassword ? "🙈" : "👁️"}
+            </button>
+          </div>
           <label className="settings-label">New Password</label>
-          <input
-            type="password"
-            className="settings-input"
-            value={newPassword}
-            onChange={(e) => setNewPassword(e.target.value)}
-            placeholder="New password (min 6 chars)"
-          />
+
+          <div className="password-field">
+            <input
+              type={showNewPassword ? "text" : "password"}
+              className="settings-input"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="New password (min 6 chars)"
+            />
+
+            <button
+              type="button"
+              className="password-eye"
+              onClick={() => setShowNewPassword((v) => !v)}
+              tabIndex={-1}
+            >
+              {showNewPassword ? "🙈" : "👁️"}
+            </button>
+          </div>
 
           <button
             type="button"
@@ -109,7 +133,6 @@ export default function SettingsPage() {
           </button>
         </div>
       </div>
-
     </div>
   );
 }

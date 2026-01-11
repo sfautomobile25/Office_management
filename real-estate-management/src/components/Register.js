@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { authAPI } from '../services/api';
+import { toast } from 'react-toastify';
 
 function Register() {
     const [formData, setFormData] = useState({
@@ -63,11 +64,12 @@ function Register() {
                     confirmPassword: '',
                     agreeTerms: false
                 });
+                toast.success("Register Successful.");
             } else {
                 setError(response.data.error || 'Registration failed');
             }
         } catch (err) {
-            console.error('Registration error:', err);
+            toast.error('Registration error:', err);
             setError(err.response?.data?.error || 'Registration failed. Please try again.');
         } finally {
             setLoading(false);
