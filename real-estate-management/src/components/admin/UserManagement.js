@@ -1,12 +1,21 @@
 import React, { useState, useEffect } from "react";
-import { userManagementAPI } from "../../services/api";
+import {
+  userManagementAPI,
+  customersAPI,
+  brokersAPI,
+  suppliersAPI,
+} from "../../services/api";
 
 function UserManagement() {
   const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
+  const [activeTab, setActiveTab] = useState("users");
+  // users | customers | brokers | suppliers
+
+  const [rows, setRows] = useState([]); // unified table data
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   const [newUser, setNewUser] = useState({
     username: "",
@@ -17,13 +26,81 @@ function UserManagement() {
     permissions: [],
   });
 
+  const TAB_CONFIG = {
+    users: {
+      title: "Users / Staff",
+      fetch: async () => {
+        const res = await userManagementAPI.getUsers();
+        return res.data.users || [];
+      },
+      create: (payload) => userManagementAPI.createUser(payload),
+      update: (id, payload) => userManagementAPI.updateUser(id, payload),
+      remove: (id) => userManagementAPI.deleteUser(id),
+    },
+
+    customers: {
+      title: "Customers",
+      fetch: async () => {
+        const res = await customersAPI.getCustomers();
+        return res.data.customers || [];
+      },
+      create: (payload) => customersAPI.createCustomer(payload),
+      update: (id, payload) => customersAPI.updateCustomer(id, payload),
+      remove: (id) => customersAPI.deleteCustomer(id),
+    },
+
+    brokers: {
+      title: "Brokers",
+      fetch: async () => {
+        const res = await brokersAPI.getBrokers();
+        return res.data.brokers || [];
+      },
+      create: (payload) => brokersAPI.createBroker(payload),
+      update: (id, payload) => brokersAPI.updateBroker(id, payload),
+      remove: (id) => brokersAPI.deleteBroker(id),
+    },
+
+    suppliers: {
+      title: "Suppliers",
+      fetch: async () => {
+        const res = await suppliersAPI.getSuppliers();
+        return res.data.suppliers || [];
+      },
+      create: (payload) => suppliersAPI.createSupplier(payload),
+      update: (id, payload) => suppliersAPI.updateSupplier(id, payload),
+      remove: (id) => suppliersAPI.deleteSupplier(id),
+    },
+  };
+
+  const fetchRows = async () => {
+    try {
+      setLoading(true);
+      setError("");
+      const list = await TAB_CONFIG[activeTab].fetch();
+      setRows(list);
+    } catch (e) {
+      setError(e.response?.data?.error || "Failed to load");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchRows();
+  }, [activeTab]);
+
   const availableRoles = [
     "admin",
-    "accounts_officer",
     "manager",
+    "accounts_officer",
+    "staff",
+    "customer",
+    "broker",
+    "supplier",
     "user",
     "guest",
   ];
+
   const availablePermissions = [
     "dashboard_view",
     "user_manage",
@@ -35,7 +112,7 @@ function UserManagement() {
     "security_view",
     "dashboard_view",
     "accounts_view",
-    "reports_view"
+    "reports_view",
   ];
 
   useEffect(() => {
@@ -329,11 +406,16 @@ function UserManagement() {
                     setNewUser({ ...newUser, role: e.target.value })
                   }
                 >
-                  <option value="admin">Administrator</option>
-                  <option value="manager">Manager</option>
-                  <option value="agent">Real Estate Agent</option>
-                  <option value="user">Regular User</option>
-                  <option value="guest">Guest</option>
+                  <option value="admin">ADMINISTRATOR</option>
+                  <option value="manager">MANAGER</option>
+                  <option value="agent">REAL ESTATE AGENT</option>
+                  <option value="accounts_officer">ACCOUNTS OFFICER</option>
+                  <option value="staff">OFFICE STAFFS</option>
+                  <option value="customer">CUSTOMERS</option>
+                  <option value="broker">BROCKER</option>
+                  <option value="supplier">SUPPLIERS</option>
+                  <option value="user">REGULAR USER</option>
+                  <option value="guest">GUEST</option>
                 </select>
               </div>
 

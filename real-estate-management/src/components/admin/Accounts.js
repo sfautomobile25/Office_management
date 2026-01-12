@@ -8,6 +8,7 @@ import {
   suppliersAPI,
   brokersAPI,
   systemAPI,
+  userManagementAPI
 } from "../../services/api";
 import { toast } from "react-toastify";
 
@@ -514,6 +515,24 @@ function Accounts() {
     };
 
     load();
+  }, [txScope]);
+
+  useEffect(() => {
+    const loadUsers = async () => {
+      setPartyId("");
+      setPartyList([]);
+
+      if (txScope === "general") return;
+
+      try {
+        const res = await userManagementAPI.getUsersByRole(txScope);
+        setPartyList(res.data.users || []);
+      } catch (err) {
+        console.error("Failed to load users by role", err);
+      }
+    };
+
+    loadUsers();
   }, [txScope]);
 
   // ---------- Receipt modal actions ----------

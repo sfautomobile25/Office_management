@@ -229,5 +229,36 @@ router.delete("/users/:id", async (req, res) => {
   }
 });
 
+// GET: users by role (for dropdowns)
+router.get("/users/by-role/:role", async (req, res) => {
+  try {
+    const role = String(req.params.role || "").trim();
+
+    // allow only certain roles to prevent weird queries
+    const allowed = [
+      "staff",
+      "customer",
+      "broker",
+      "supplier",
+      "admin",
+      "manager",
+      "accounts_officer",
+      "user",
+    ];
+    if (!allowed.includes(role)) {
+      return res.status(400).json({ success: false, error: "Invalid role" });
+    }
+
+    const users = await allAsync(
+      "SELECT id, username AS name, email, role FROM users WHERE role = ? ORDER BY username ASC",
+      [role]
+    );
+
+    res.json({ success: true, users });
+  } catch (err) {
+    console.error("by-role error:", err);
+    res.status(500).json({ success: false, error: "Failed to load users" });
+  }
+});
 
 module.exports = router;

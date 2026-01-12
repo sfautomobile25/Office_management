@@ -225,24 +225,21 @@ export const userManagementAPI = {
   updateUser: (id, userData) =>
     API.put(`/user-management/users/${id}`, userData),
   deleteUser: (id) => API.delete(`/user-management/users/${id}`),
-};
 
+  getUsersByRole: (role) => API.get(`/user-management/users/by-role/${role}`),
+};
 
 // =======================
 // Customers API
 // =======================
 export const customersAPI = {
-  getCustomers: () =>
-    API.get("/customers"),
+  getCustomers: () => API.get("/customers"),
 
-  createCustomer: (data) =>
-    API.post("/customers", data),
+  createCustomer: (data) => API.post("/customers", data),
 
-  updateCustomer: (id, data) =>
-    API.put(`/customers/${id}`, data),
+  updateCustomer: (id, data) => API.put(`/customers/${id}`, data),
 
-  deleteCustomer: (id) =>
-    API.delete(`/customers/${id}`),
+  deleteCustomer: (id) => API.delete(`/customers/${id}`),
 };
 
 // =======================
@@ -255,6 +252,5 @@ export const suppliersAPI = {
 export const brokersAPI = {
   getBrokers: () => API.get("/brokers"),
 };
-
 
 export default API;
