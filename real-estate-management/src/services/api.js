@@ -227,6 +227,8 @@ export const userManagementAPI = {
   deleteUser: (id) => API.delete(`/user-management/users/${id}`),
 
   getUsersByRole: (role) => API.get(`/user-management/users/by-role/${role}`),
+  getUsersByScope: (scope) => API.get(`/user-management/users/by-scope/${scope}`),
+
 };
 
 // =======================

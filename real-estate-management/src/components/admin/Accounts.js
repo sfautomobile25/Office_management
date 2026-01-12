@@ -8,7 +8,7 @@ import {
   suppliersAPI,
   brokersAPI,
   systemAPI,
-  userManagementAPI
+  userManagementAPI,
 } from "../../services/api";
 import { toast } from "react-toastify";
 
@@ -105,8 +105,6 @@ function Accounts() {
   const [receiptModalOpen, setReceiptModalOpen] = useState(false);
   const [receiptLoading, setReceiptLoading] = useState(false);
   const [receiptData, setReceiptData] = useState(null);
-
-  const [activeSection, setActiveSection] = useState("reports");
   // you can default to whatever you want: "overview" / "reports" etc
 
   const [pendingCount, setPendingCount] = useState(0);
@@ -123,7 +121,8 @@ function Accounts() {
   const [statementLoading, setStatementLoading] = useState(false);
   const [statementError, setStatementError] = useState("");
 
-  const [transactionType, setTransactionType] = useState("cash_in"); // or "receipt"
+  const [transactionType, setTransactionType] = useState("receipt");
+  // or "receipt"
   const [category, setCategory] = useState("");
   // New transaction form
   const [newCashTransaction, setNewCashTransaction] = useState({
@@ -226,8 +225,8 @@ function Accounts() {
     "চায়না থেকে মাল ক্রয়",
   ];
 
-  const isCashIn =
-    transactionType === "receipt" || transactionType === "cash_in";
+  const isCashIn = transactionType === "receipt";
+
   const categoryOptions = isCashIn ? CASH_IN_CATEGORIES : CASH_OUT_CATEGORIES;
 
   // ---------- Data loaders ----------
@@ -408,6 +407,7 @@ function Accounts() {
 
   const loadStatement = async () => {
     try {
+      setStatementError("");
       setStatementLoading(true);
 
       const { start_date, end_date } = getRangeDates(statementRange);
@@ -420,8 +420,9 @@ function Accounts() {
       setStatementRows(res.data.statement || []);
       setStatementSummary(res.data.summary || null);
     } catch (e) {
-      console.error(e);
-      alert("Failed to load statement");
+      setStatementRows([]);
+      setStatementSummary(null);
+      setStatementError(e?.response?.data?.error || "Failed to load statement");
     } finally {
       setStatementLoading(false);
     }
@@ -448,19 +449,20 @@ function Accounts() {
   }, []);
 
   useEffect(() => {
-    if (activeSection === "pending") {
+    if (activeTab === "pending") {
       loadPendingTransactions();
     }
-  }, [activeSection]);
+  }, [activeTab]);
 
   useEffect(() => {
-    if (activeSection === "pending") {
+    if (activeTab === "download_statement") {
       loadStatement();
     }
-  }, [activeSection, statementRange]);
+  }, [activeTab, statementRange]);
 
   useEffect(() => {
-    // auto refresh every 20s (change as you like)
+    if (activeTab !== "download_statement") return;
+
     if (statementTimerRef.current) clearInterval(statementTimerRef.current);
 
     statementTimerRef.current = setInterval(() => {
@@ -470,7 +472,8 @@ function Accounts() {
     return () => {
       if (statementTimerRef.current) clearInterval(statementTimerRef.current);
     };
-  }, [statementRange]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, statementRange]);
 
   useEffect(() => {
     setCategory(""); // reset category when user changes cash in/out
@@ -488,51 +491,21 @@ function Accounts() {
   }, []);
 
   useEffect(() => {
-    setPartyId("");
-    setPartyList([]);
-
-    const load = async () => {
-      if (txScope === "general") return;
-
-      setPartyLoading(true);
-      try {
-        if (txScope === "customer") {
-          const res = await customersAPI.getCustomers();
-          setPartyList(res.data.customers || []);
-        } else if (txScope === "staff") {
-          const res = await systemAPI.getStaff();
-          setPartyList(res.data.staff || []);
-        } else if (txScope === "broker") {
-          const res = await brokersAPI.getBrokers();
-          setPartyList(res.data.brokers || []);
-        } else if (txScope === "supplier") {
-          const res = await suppliersAPI.getSuppliers();
-          setPartyList(res.data.suppliers || []);
-        }
-      } finally {
-        setPartyLoading(false);
-      }
-    };
-
-    load();
-  }, [txScope]);
-
-  useEffect(() => {
-    const loadUsers = async () => {
+    const loadPartyList = async () => {
       setPartyId("");
       setPartyList([]);
 
       if (txScope === "general") return;
 
       try {
-        const res = await userManagementAPI.getUsersByRole(txScope);
-        setPartyList(res.data.users || []);
+        const res = await userManagementAPI.getUsersByScope(txScope);
+        setPartyList(res.data?.users || []);
       } catch (err) {
-        console.error("Failed to load users by role", err);
+        console.error("Failed to load users by scope", err);
       }
     };
 
-    loadUsers();
+    loadPartyList();
   }, [txScope]);
 
   // ---------- Receipt modal actions ----------
@@ -1005,13 +978,19 @@ function Accounts() {
               <div className="form-group">
                 <label>লেনদেনের ধরন *</label>
                 <select
-                  value={newCashTransaction.transactionType}
-                  onChange={(e) => setTransactionType(e.target.value)}
+                  value={newCashTransaction.transaction_type}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setNewCashTransaction((prev) => ({
+                      ...prev,
+                      transaction_type: v,
+                    }));
+                    setTransactionType(v); // keeps categoryOptions correct
+                  }}
                   required
                 >
                   <option value="receipt">Cash In</option>
                   <option value="payment">Cash Out</option>
-                  <option value="transfer">Transfer</option>
                 </select>
               </div>
 
@@ -1045,7 +1024,7 @@ function Accounts() {
                     </option>
                     {partyList.map((p) => (
                       <option key={p.id} value={p.id}>
-                        {p.name}
+                        {p.name || p.username || p.email || `ID-${p.id}`}
                       </option>
                     ))}
                   </select>
@@ -1156,7 +1135,6 @@ function Accounts() {
 
             <button
               type="submit"
-              onClick={handleCashTransaction}
               disabled={submitting}
               className="btn btn-primary"
             >
